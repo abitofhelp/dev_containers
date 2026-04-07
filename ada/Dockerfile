@@ -190,7 +190,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # An empty static archive satisfies the linker without pulling in a redundant
 # GNU libiconv.
 # ----------------------------------------------------------------------------
-RUN ar rcs /usr/lib/x86_64-linux-gnu/libiconv.a
+RUN ar rcs /usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/libiconv.a
 
 # ----------------------------------------------------------------------------
 # Create developer user
