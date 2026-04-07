@@ -1,0 +1,11 @@
+//  Copyright (c) 2026 Michael Gardner, A Bit of Help, Inc.
+//  SPDX-License-Identifier: BSD-3-Clause
+
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("Hello from Go in dev_container_go!")
+	fmt.Println("Toolchain verification: PASSED")
+}

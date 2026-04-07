@@ -1,0 +1,61 @@
+# =============================================================================
+# .gitattributes
+# =============================================================================
+# Copyright (c) 2025 Michael Gardner, A Bit of Help, Inc.
+# SPDX-License-Identifier: BSD-3-Clause
+# See LICENSE file in the project root.
+# =============================================================================
+# Git attributes for the Ada development container project.
+# Configures GitHub Linguist, line endings, and archive exclusions.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# GitHub Linguist — Language Statistics
+# -----------------------------------------------------------------------------
+# This is a container project.  The primary artifacts are the Dockerfile and
+# entrypoint script.  Mark support files so GitHub's language breakdown
+# reflects the project accurately.
+
+Dockerfile linguist-language=Dockerfile
+entrypoint.sh linguist-language=Shell
+
+# Build and CI files
+Makefile linguist-vendored
+*.yml linguist-vendored
+.github/** linguist-vendored
+
+# Documentation
+*.md linguist-documentation
+
+# Shell configuration
+.zshrc linguist-vendored
+
+# IDE and editor
+.vscode/** linguist-vendored
+.idea/** linguist-vendored
+
+# -----------------------------------------------------------------------------
+# Line Ending Configuration
+# -----------------------------------------------------------------------------
+# Ensure consistent LF line endings across platforms.
+* text=auto eol=lf
+
+# Binary files
+*.tar binary
+*.tar.gz binary
+*.tar.xz binary
+*.tgz binary
+*.zip binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+
+# -----------------------------------------------------------------------------
+# Export Ignore (git archive exclusions)
+# -----------------------------------------------------------------------------
+# Excluded from archives created by `make compress` (git archive).
+.claude/ export-ignore
+.github/ export-ignore
+.gitattributes export-ignore
+.gitignore export-ignore
+dist/ export-ignore

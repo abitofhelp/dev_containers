@@ -1,0 +1,13 @@
+# C/C++ build artifacts (common patterns are in the root .gitignore).
+*.o
+*.obj
+*.d
+*.a
+*.so
+*.dylib
+*.exe
+build/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json

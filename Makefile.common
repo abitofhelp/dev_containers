@@ -1,0 +1,319 @@
+# ============================================================================
+# Makefile.common
+# ============================================================================
+# Copyright (c) 2026 Michael Gardner, A Bit of Help, Inc.
+# SPDX-License-Identifier: BSD-3-Clause
+# See LICENSE file in the project root.
+# ============================================================================
+#
+# Shared variables and targets for the dev_containers monorepo.
+#
+# Each per-language Makefile sets LANG_DIR, IMAGE_NAME, PROJECT_NAME,
+# and optionally SYSTEM_IMAGE_NAME, BUILD_ARGS, EXAMPLE_DIR, TEST_SCRIPT,
+# and TEST_SCRIPT_SYSTEM before including this file.
+#
+# The build context for docker build is always the repo root so that
+# Dockerfiles can COPY shared files (entrypoint.sh, LICENSE).
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Terminal colors
+# ----------------------------------------------------------------------------
+CYAN  := \033[36m
+GREEN := \033[32m
+NC    := \033[0m
+
+# ----------------------------------------------------------------------------
+# Repo root (derived from this file's own location)
+# ----------------------------------------------------------------------------
+REPO_ROOT := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+
+# ----------------------------------------------------------------------------
+# Host identity (runtime — passed to entrypoint.sh)
+# ----------------------------------------------------------------------------
+HOST_USER ?= $(shell whoami)
+HOST_UID  ?= $(shell id -u)
+HOST_GID  ?= $(shell id -g)
+
+# ----------------------------------------------------------------------------
+# Container CLI — auto-detected: macOS/Windows -> docker, Linux -> nerdctl.
+# Override: make build CONTAINER_CLI=docker
+# ----------------------------------------------------------------------------
+CONTAINER_CLI ?= $(shell case "$$(uname -s)" in Darwin|MINGW*|MSYS*|CYGWIN*) echo docker ;; *) echo nerdctl ;; esac)
+
+# ----------------------------------------------------------------------------
+# Container launcher (shared Python script).
+# Override: HYBRID_SCRIPTS_PYTHON=/path/to/repo make run
+# ----------------------------------------------------------------------------
+SCRIPTS_PYTHON ?= $(shell \
+    if [ -n "$$HYBRID_SCRIPTS_PYTHON" ]; then echo "$$HYBRID_SCRIPTS_PYTHON"; \
+    elif [ "$$(uname)" = "Darwin" ]; then echo "$$HOME/Ada/github.com/abitofhelp/hybrid_scripts_python"; \
+    else echo "$$HOME/ada/github.com/abitofhelp/hybrid_scripts_python"; fi)
+CONTAINER_RUN := python3 $(SCRIPTS_PYTHON)/makefile/container_run.py
+
+# ----------------------------------------------------------------------------
+# Image registry and references
+# ----------------------------------------------------------------------------
+IMAGE_REGISTRY ?= ghcr.io/abitofhelp
+IMAGE_REF      ?= $(IMAGE_REGISTRY)/$(IMAGE_NAME)
+
+ifdef SYSTEM_IMAGE_NAME
+SYSTEM_IMAGE_REF ?= $(IMAGE_REGISTRY)/$(SYSTEM_IMAGE_NAME)
+endif
+
+# ----------------------------------------------------------------------------
+# Build arguments (empty by default; language Makefile can set)
+# ----------------------------------------------------------------------------
+BUILD_ARGS ?=
+
+# ============================================================================
+# Shared targets
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Pull targets (pull from GHCR and tag for local use)
+# ----------------------------------------------------------------------------
+.PHONY: pull
+pull:
+	$(CONTAINER_CLI) pull $(IMAGE_REF):latest
+	$(CONTAINER_CLI) tag $(IMAGE_REF):latest $(IMAGE_NAME):latest
+
+ifdef SYSTEM_IMAGE_NAME
+.PHONY: pull-system
+pull-system:
+	$(CONTAINER_CLI) pull $(SYSTEM_IMAGE_REF):latest
+	$(CONTAINER_CLI) tag $(SYSTEM_IMAGE_REF):latest $(SYSTEM_IMAGE_NAME):latest
+endif
+
+# ----------------------------------------------------------------------------
+# Build targets
+# ----------------------------------------------------------------------------
+.PHONY: build
+build:
+	cd $(REPO_ROOT) && $(CONTAINER_CLI) build -f $(LANG_DIR)/Dockerfile $(BUILD_ARGS) -t $(IMAGE_NAME) .
+
+.PHONY: build-no-cache
+build-no-cache:
+	cd $(REPO_ROOT) && $(CONTAINER_CLI) build --no-cache -f $(LANG_DIR)/Dockerfile $(BUILD_ARGS) -t $(IMAGE_NAME) .
+
+ifdef SYSTEM_IMAGE_NAME
+.PHONY: build-system
+build-system:
+	cd $(REPO_ROOT) && $(CONTAINER_CLI) build -f $(LANG_DIR)/Dockerfile.system -t $(SYSTEM_IMAGE_NAME) .
+
+.PHONY: build-system-no-cache
+build-system-no-cache:
+	cd $(REPO_ROOT) && $(CONTAINER_CLI) build --no-cache -f $(LANG_DIR)/Dockerfile.system -t $(SYSTEM_IMAGE_NAME) .
+endif
+
+# ----------------------------------------------------------------------------
+# Run targets (delegated to container_run.py for CLI detection + naming)
+# ----------------------------------------------------------------------------
+.PHONY: run
+run:
+	@$(CONTAINER_RUN) --image $(IMAGE_NAME) --source "$(CURDIR)"
+
+.PHONY: run-root
+run-root:
+	@$(CONTAINER_RUN) --image $(IMAGE_NAME) --source "$(CURDIR)" --root
+
+.PHONY: run-shell
+run-shell:
+	@$(CONTAINER_RUN) --image $(IMAGE_NAME) --source "$(CURDIR)" --workdir /home/$(HOST_USER)
+
+ifdef SYSTEM_IMAGE_NAME
+.PHONY: run-system
+run-system:
+	@$(CONTAINER_RUN) --image $(SYSTEM_IMAGE_NAME) --source "$(CURDIR)"
+
+.PHONY: run-root-system
+run-root-system:
+	@$(CONTAINER_RUN) --image $(SYSTEM_IMAGE_NAME) --source "$(CURDIR)" --root
+
+.PHONY: run-shell-system
+run-shell-system:
+	@$(CONTAINER_RUN) --image $(SYSTEM_IMAGE_NAME) --source "$(CURDIR)" --workdir /home/$(HOST_USER)
+endif
+
+# ----------------------------------------------------------------------------
+# Test targets
+# ----------------------------------------------------------------------------
+.PHONY: test
+test:
+	$(CONTAINER_CLI) run --rm \
+		-e HOST_UID=$(HOST_UID) \
+		-e HOST_GID=$(HOST_GID) \
+		-e HOST_USER=$(HOST_USER) \
+		-v "$(REPO_ROOT)$(LANG_DIR)":/workspace \
+		-w /workspace/$(EXAMPLE_DIR) \
+		$(IMAGE_NAME) \
+		bash -c "$$TEST_SCRIPT"
+
+.PHONY: test-docker
+test-docker:
+	docker run --rm \
+		-e HOST_UID=$(HOST_UID) \
+		-e HOST_GID=$(HOST_GID) \
+		-e HOST_USER=$(HOST_USER) \
+		-v "$(REPO_ROOT)$(LANG_DIR)":/workspace \
+		-w /workspace/$(EXAMPLE_DIR) \
+		$(IMAGE_NAME) \
+		bash -c "$$TEST_SCRIPT"
+
+.PHONY: test-podman
+test-podman:
+	podman run --rm \
+		--userns=keep-id \
+		-v "$(REPO_ROOT)$(LANG_DIR)":/workspace \
+		-w /workspace/$(EXAMPLE_DIR) \
+		$(IMAGE_NAME) \
+		bash -c "$$TEST_SCRIPT"
+
+ifdef SYSTEM_IMAGE_NAME
+.PHONY: test-system
+test-system:
+	$(CONTAINER_CLI) run --rm \
+		-e HOST_UID=$(HOST_UID) \
+		-e HOST_GID=$(HOST_GID) \
+		-e HOST_USER=$(HOST_USER) \
+		-v "$(REPO_ROOT)$(LANG_DIR)":/workspace \
+		-w /workspace/$(EXAMPLE_DIR) \
+		$(SYSTEM_IMAGE_NAME) \
+		bash -c "$$TEST_SCRIPT_SYSTEM"
+
+.PHONY: test-docker-system
+test-docker-system:
+	docker run --rm \
+		-e HOST_UID=$(HOST_UID) \
+		-e HOST_GID=$(HOST_GID) \
+		-e HOST_USER=$(HOST_USER) \
+		-v "$(REPO_ROOT)$(LANG_DIR)":/workspace \
+		-w /workspace/$(EXAMPLE_DIR) \
+		$(SYSTEM_IMAGE_NAME) \
+		bash -c "$$TEST_SCRIPT_SYSTEM"
+
+.PHONY: test-podman-system
+test-podman-system:
+	podman run --rm \
+		--userns=keep-id \
+		-v "$(REPO_ROOT)$(LANG_DIR)":/workspace \
+		-w /workspace/$(EXAMPLE_DIR) \
+		$(SYSTEM_IMAGE_NAME) \
+		bash -c "$$TEST_SCRIPT_SYSTEM"
+endif
+
+# ----------------------------------------------------------------------------
+# Docker convenience aliases
+# ----------------------------------------------------------------------------
+.PHONY: docker-pull
+docker-pull:
+	$(MAKE) pull CONTAINER_CLI=docker
+
+.PHONY: docker-build
+docker-build:
+	$(MAKE) build CONTAINER_CLI=docker
+
+.PHONY: docker-run
+docker-run:
+	@$(CONTAINER_RUN) --image $(IMAGE_NAME) --source "$(CURDIR)" --cli docker
+
+ifdef SYSTEM_IMAGE_NAME
+.PHONY: docker-pull-system
+docker-pull-system:
+	$(MAKE) pull-system CONTAINER_CLI=docker
+
+.PHONY: docker-build-system
+docker-build-system:
+	$(MAKE) build-system CONTAINER_CLI=docker
+
+.PHONY: docker-run-system
+docker-run-system:
+	@$(CONTAINER_RUN) --image $(SYSTEM_IMAGE_NAME) --source "$(CURDIR)" --cli docker
+endif
+
+# ----------------------------------------------------------------------------
+# Podman convenience aliases
+# ----------------------------------------------------------------------------
+# Podman rootless uses --userns=keep-id to map the host UID/GID directly
+# into the container, so HOST_* env vars and entrypoint adaptation are not
+# needed.  The entrypoint detects a non-root UID and execs the CMD directly.
+# ----------------------------------------------------------------------------
+.PHONY: podman-pull
+podman-pull:
+	$(MAKE) pull CONTAINER_CLI=podman
+
+.PHONY: podman-build
+podman-build:
+	$(MAKE) build CONTAINER_CLI=podman
+
+.PHONY: podman-run
+podman-run:
+	@$(CONTAINER_RUN) --image $(IMAGE_NAME) --source "$(CURDIR)" --cli podman
+
+ifdef SYSTEM_IMAGE_NAME
+.PHONY: podman-pull-system
+podman-pull-system:
+	$(MAKE) pull-system CONTAINER_CLI=podman
+
+.PHONY: podman-build-system
+podman-build-system:
+	$(MAKE) build-system CONTAINER_CLI=podman
+
+.PHONY: podman-run-system
+podman-run-system:
+	@$(CONTAINER_RUN) --image $(SYSTEM_IMAGE_NAME) --source "$(CURDIR)" --cli podman
+endif
+
+# ----------------------------------------------------------------------------
+# Inspect — show all key variables
+# ----------------------------------------------------------------------------
+.PHONY: inspect
+inspect:
+	@echo "REPO_ROOT          = $(REPO_ROOT)"
+	@echo "LANG_DIR           = $(LANG_DIR)"
+	@echo "IMAGE_NAME         = $(IMAGE_NAME)"
+ifdef SYSTEM_IMAGE_NAME
+	@echo "SYSTEM_IMAGE_NAME  = $(SYSTEM_IMAGE_NAME)"
+endif
+	@echo "IMAGE_REF          = $(IMAGE_REF)"
+ifdef SYSTEM_IMAGE_NAME
+	@echo "SYSTEM_IMAGE_REF   = $(SYSTEM_IMAGE_REF)"
+endif
+	@echo "BUILD_ARGS         = $(BUILD_ARGS)"
+	@echo "CONTAINER_CLI      = $(CONTAINER_CLI)"
+	@echo "SCRIPTS_PYTHON     = $(SCRIPTS_PYTHON)"
+	@echo "HOST_USER          = $(HOST_USER)"
+	@echo "HOST_UID           = $(HOST_UID)"
+	@echo "HOST_GID           = $(HOST_GID)"
+
+# ----------------------------------------------------------------------------
+# Tag latest
+# ----------------------------------------------------------------------------
+.PHONY: tag-latest
+tag-latest:
+	$(CONTAINER_CLI) tag $(IMAGE_NAME) $(IMAGE_REF):latest
+
+ifdef SYSTEM_IMAGE_NAME
+.PHONY: tag-latest-system
+tag-latest-system:
+	$(CONTAINER_CLI) tag $(SYSTEM_IMAGE_NAME) $(SYSTEM_IMAGE_REF):latest
+endif
+
+# ----------------------------------------------------------------------------
+# Cleanup
+# ----------------------------------------------------------------------------
+.PHONY: clean
+clean:
+	@echo "$(CYAN)Removing build artifacts...$(NC)"
+	rm -rf dist/
+	rm -f $(PROJECT_NAME).tar.gz
+	@echo "$(GREEN)Clean complete.$(NC)"
+
+# ----------------------------------------------------------------------------
+# Source archive
+# ----------------------------------------------------------------------------
+.PHONY: compress
+compress:
+	@echo "$(CYAN)Creating compressed source archive...$(NC)"
+	git archive --format=tar.gz --prefix=$(PROJECT_NAME)/ -o $(PROJECT_NAME).tar.gz HEAD
+	@echo "$(GREEN)Archive created: $(PROJECT_NAME).tar.gz$(NC)"

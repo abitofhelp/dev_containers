@@ -1,0 +1,25 @@
+# ============================================================================
+# .dockerignore
+# ============================================================================
+# Excludes files from the Docker build context to reduce transfer size.
+# The build context is the repo root (for access to shared files).
+# ============================================================================
+.git
+.github
+.claude
+.gitignore
+.gitattributes
+.gitkeep
+.DS_Store
+
+# Documentation (not copied into images)
+README.md
+USER_GUIDE.md
+CHANGELOG.md
+
+# Build artifacts
+dist/
+exports/
+*.tar
+*.tar.gz
+*.tar.xz

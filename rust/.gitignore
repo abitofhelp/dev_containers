@@ -1,0 +1,3 @@
+# Rust build artifacts (common patterns are in the root .gitignore).
+target/
+Cargo.lock

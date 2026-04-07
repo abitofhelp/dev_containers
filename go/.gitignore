@@ -1,0 +1,4 @@
+# Go build artifacts (common patterns are in the root .gitignore).
+/bin/
+coverage.out
+coverage.html
