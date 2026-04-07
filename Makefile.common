@@ -39,7 +39,7 @@ HOST_GID  ?= $(shell id -g)
 # Container CLI — auto-detected: macOS/Windows -> docker, Linux -> nerdctl.
 # Override: make build CONTAINER_CLI=docker
 # ----------------------------------------------------------------------------
-CONTAINER_CLI ?= $(shell case "$$(uname -s)" in Darwin|MINGW*|MSYS*|CYGWIN*) echo docker ;; *) echo nerdctl ;; esac)
+CONTAINER_CLI ?= $(shell if [ "$$(uname)" = "Darwin" ] || echo "$$(uname -s)" | grep -qiE '^(MINGW|MSYS|CYGWIN)'; then echo docker; else echo nerdctl; fi)
 
 # ----------------------------------------------------------------------------
 # Container launcher (shared Python script).
