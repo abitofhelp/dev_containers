@@ -152,7 +152,13 @@ sudo sh -c 'echo "kernel.apparmor_restrict_unprivileged_userns=0" >> /etc/sysctl
 containerd-rootless-setuptool.sh install
 ```
 
-### 3. Enable linger for your user
+### 3. Install BuildKit (required for `nerdctl build`)
+
+```bash
+containerd-rootless-setuptool.sh install-buildkit
+```
+
+### 4. Enable linger for your user
 
 ```bash
 sudo loginctl enable-linger $(whoami)
@@ -161,7 +167,7 @@ sudo loginctl enable-linger $(whoami)
 This keeps your systemd session alive across SSH connections so that a
 second terminal can see running containers.
 
-### 4. Verify XDG_RUNTIME_DIR
+### 5. Verify XDG_RUNTIME_DIR
 
 ```bash
 echo $XDG_RUNTIME_DIR
@@ -174,7 +180,7 @@ If empty, add to your shell profile:
 export XDG_RUNTIME_DIR=/run/user/$(id -u)
 ```
 
-### 5. Verify
+### 6. Verify
 
 ```bash
 nerdctl ps    # Should return without errors

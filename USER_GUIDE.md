@@ -85,7 +85,16 @@ containerd-rootless-setuptool.sh install
 This creates a user-level containerd service.  It coexists with any
 system-level containerd (e.g., for Kubernetes).
 
-**Step 3 — Enable linger (headless servers):**
+**Step 3 — Install BuildKit (required for `nerdctl build`):**
+
+```bash
+containerd-rootless-setuptool.sh install-buildkit
+```
+
+BuildKit provides the build engine for `nerdctl build`.  Without it,
+pulling and running pre-built images works, but local image builds fail.
+
+**Step 4 — Enable linger (headless servers):**
 
 ```bash
 sudo loginctl enable-linger $(whoami)
@@ -95,7 +104,7 @@ Without linger, your systemd session (and rootless containerd) terminates
 when you disconnect SSH.  A second terminal would not be able to see
 containers started from the first.
 
-**Step 4 — Verify XDG_RUNTIME_DIR:**
+**Step 5 — Verify XDG_RUNTIME_DIR:**
 
 ```bash
 echo $XDG_RUNTIME_DIR    # Should show /run/user/<uid>
@@ -107,7 +116,7 @@ If empty, add to `~/.zshrc`:
 export XDG_RUNTIME_DIR=/run/user/$(id -u)
 ```
 
-**Step 5 — Verify:**
+**Step 6 — Verify:**
 
 ```bash
 nerdctl ps    # Should return without errors
