@@ -183,6 +183,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 
 # ----------------------------------------------------------------------------
+# Python packages (pytest for test automation)
+# ----------------------------------------------------------------------------
+RUN pip3 install --no-cache-dir pytest
+
+# ----------------------------------------------------------------------------
+# Typst (formal document compiler)
+# ----------------------------------------------------------------------------
+ARG TYPST_VERSION=0.14.2
+RUN wget -q "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-x86_64-unknown-linux-musl.tar.xz" \
+ && tar xf typst-x86_64-unknown-linux-musl.tar.xz \
+ && install -m 0755 typst-x86_64-unknown-linux-musl/typst /usr/local/bin/typst \
+ && rm -rf typst-x86_64-unknown-linux-musl*
+
+# ----------------------------------------------------------------------------
 # glibc iconv stub
 # ----------------------------------------------------------------------------
 # On glibc systems, iconv is built into libc — there is no separate libiconv

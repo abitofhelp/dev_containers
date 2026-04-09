@@ -212,6 +212,20 @@ RUN cargo binstall -y --no-symlinks \
  && chmod -R a+rX /opt/cargo
 
 # ----------------------------------------------------------------------------
+# Python packages (pytest for test automation)
+# ----------------------------------------------------------------------------
+RUN pip3 install --no-cache-dir --break-system-packages pytest
+
+# ----------------------------------------------------------------------------
+# Typst (formal document compiler)
+# ----------------------------------------------------------------------------
+ARG TYPST_VERSION=0.14.2
+RUN wget -q "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-x86_64-unknown-linux-musl.tar.xz" \
+ && tar xf typst-x86_64-unknown-linux-musl.tar.xz \
+ && install -m 0755 typst-x86_64-unknown-linux-musl/typst /usr/local/bin/typst \
+ && rm -rf typst-x86_64-unknown-linux-musl*
+
+# ----------------------------------------------------------------------------
 # Create developer user
 # ----------------------------------------------------------------------------
 RUN set -eux; \
