@@ -81,7 +81,19 @@ FROM ubuntu:24.04@sha256:d1e2e92c075e5ca139d51a140fff46f84315c0fdce203eab2807c7e
 # ----------------------------------------------------------------------------
 # Build arguments (alphabetized)
 # ----------------------------------------------------------------------------
+ARG CARGO_BINSTALL_SHA256_AMD64=cf2a4b54494ea8555d6349685e9a301efc1051d9fba6308c76914b2486f8700f
+ARG CARGO_BINSTALL_SHA256_ARM64=c55962a0115f9716b709216de7f8bdd59d6ba8738779e60b051b4593f677717a
+ARG CARGO_BINSTALL_VERSION=1.18.1
+ARG CARGO_EXPAND_VERSION=1.0.121
+ARG CARGO_GENERATE_VERSION=0.23.8
 ARG DEBIAN_FRONTEND=noninteractive
+ARG PROBE_RS_TOOLS_VERSION=0.31.0
+ARG PYTEST_VERSION=9.0.3
+ARG RUST_VERSION=1.95.0
+ARG SCCACHE_VERSION=0.14.0
+ARG TYPST_SHA256_AMD64=a6044cbad2a954deb921167e257e120ac0a16b20339ec01121194ff9d394996d
+ARG TYPST_SHA256_ARM64=491b101aa40a3a7ea82a3f8a6232cabb4e6a7e233810082e5ac812d43fdcd47a
+ARG TYPST_VERSION=0.14.2
 ARG USER_GID=1000
 ARG USERNAME=dev
 ARG USER_UID=1000
@@ -174,10 +186,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 
 # ----------------------------------------------------------------------------
-# Rustup + stable toolchain
+# Rustup + pinned toolchain
+#
+# rustup verifies downloaded toolchains against Rust's signing key, so no
+# separate SHA256 is required for the toolchain itself.
 # ----------------------------------------------------------------------------
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-    sh -s -- -y --default-toolchain stable --profile default \
+    sh -s -- -y --default-toolchain "${RUST_VERSION}" --profile default \
  && rustup component add rust-analyzer llvm-tools-preview \
  && chmod -R a+rX /opt/rustup /opt/cargo
 
@@ -194,21 +209,31 @@ RUN rustup target add \
  && chmod -R a+rX /opt/rustup
 
 # ----------------------------------------------------------------------------
-# cargo-binstall (fast binary installs)
+# cargo-binstall (release tarball, SHA256-verified)
 # ----------------------------------------------------------------------------
-RUN curl -L --proto '=https' --tlsv1.2 -sSf \
-    https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh \
-    | bash \
+RUN ARCH=$(dpkg --print-architecture) \
+ && if [ "$ARCH" = "amd64" ]; then CARGO_BINSTALL_ARCH="x86_64"; CARGO_BINSTALL_SHA256="${CARGO_BINSTALL_SHA256_AMD64}"; \
+    elif [ "$ARCH" = "arm64" ]; then CARGO_BINSTALL_ARCH="aarch64"; CARGO_BINSTALL_SHA256="${CARGO_BINSTALL_SHA256_ARM64}"; \
+    else echo "Unsupported architecture: $ARCH" && exit 1; fi \
+ && wget -qO /tmp/cargo-binstall.tgz \
+    "https://github.com/cargo-bins/cargo-binstall/releases/download/v${CARGO_BINSTALL_VERSION}/cargo-binstall-${CARGO_BINSTALL_ARCH}-unknown-linux-musl.tgz" \
+ && echo "${CARGO_BINSTALL_SHA256}  /tmp/cargo-binstall.tgz" | sha256sum -c - \
+ && tar -xzf /tmp/cargo-binstall.tgz -C /tmp \
+ && install -m 0755 /tmp/cargo-binstall /opt/cargo/bin/cargo-binstall \
+ && rm -f /tmp/cargo-binstall /tmp/cargo-binstall.tgz \
  && chmod -R a+rX /opt/cargo
 
 # ----------------------------------------------------------------------------
-# Cargo tools (via binstall)
+# Cargo tools (via binstall, versions pinned)
+#
+# cargo binstall downloads pre-built binaries published by each crate's
+# upstream release; cargo verifies crate metadata against crates.io.
 # ----------------------------------------------------------------------------
 RUN cargo binstall -y --no-symlinks \
-    probe-rs-tools \
-    cargo-generate \
-    cargo-expand \
-    sccache \
+    "probe-rs-tools@${PROBE_RS_TOOLS_VERSION}" \
+    "cargo-generate@${CARGO_GENERATE_VERSION}" \
+    "cargo-expand@${CARGO_EXPAND_VERSION}" \
+    "sccache@${SCCACHE_VERSION}" \
  && chmod -R a+rX /opt/cargo
 
 # ----------------------------------------------------------------------------
@@ -285,16 +310,20 @@ USER root
 # ----------------------------------------------------------------------------
 # Python packages (pytest for test automation)
 # ----------------------------------------------------------------------------
-RUN pip3 install --no-cache-dir --break-system-packages pytest
+RUN pip3 install --no-cache-dir --break-system-packages "pytest==${PYTEST_VERSION}"
 
 # ----------------------------------------------------------------------------
 # Typst (formal document compiler)
 # ----------------------------------------------------------------------------
-ARG TYPST_VERSION=0.14.2
-RUN wget -q "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-x86_64-unknown-linux-musl.tar.xz" \
- && tar xf typst-x86_64-unknown-linux-musl.tar.xz \
- && install -m 0755 typst-x86_64-unknown-linux-musl/typst /usr/local/bin/typst \
- && rm -rf typst-x86_64-unknown-linux-musl*
+RUN ARCH=$(dpkg --print-architecture) \
+ && if [ "$ARCH" = "amd64" ]; then TYPST_ARCH="x86_64"; TYPST_SHA256="${TYPST_SHA256_AMD64}"; \
+    elif [ "$ARCH" = "arm64" ]; then TYPST_ARCH="aarch64"; TYPST_SHA256="${TYPST_SHA256_ARM64}"; \
+    else echo "Unsupported architecture: $ARCH" && exit 1; fi \
+ && wget -q "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-${TYPST_ARCH}-unknown-linux-musl.tar.xz" \
+ && echo "${TYPST_SHA256}  typst-${TYPST_ARCH}-unknown-linux-musl.tar.xz" | sha256sum -c - \
+ && tar xf "typst-${TYPST_ARCH}-unknown-linux-musl.tar.xz" \
+ && install -m 0755 "typst-${TYPST_ARCH}-unknown-linux-musl/typst" /usr/local/bin/typst \
+ && rm -rf typst-*-unknown-linux-musl*
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

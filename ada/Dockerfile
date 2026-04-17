@@ -105,6 +105,9 @@ ARG ALIRE_ZIP=alr-2.1.0-bin-x86_64-linux.zip
 ARG DEBIAN_FRONTEND=noninteractive
 ARG GNAT_VERSION=15.2.1
 ARG GPRBUILD_VERSION=25.0.1
+ARG PYTEST_VERSION=9.0.3
+ARG TYPST_SHA256_AMD64=a6044cbad2a954deb921167e257e120ac0a16b20339ec01121194ff9d394996d
+ARG TYPST_VERSION=0.14.2
 ARG USER_GID=1000
 ARG USERNAME=dev
 ARG USER_UID=1000
@@ -277,13 +280,16 @@ RUN for d in /home/${USERNAME}/.local/share/alire/toolchains/*/bin; do \
 # ----------------------------------------------------------------------------
 # Python packages (pytest for test automation)
 # ----------------------------------------------------------------------------
-RUN pip3 install --no-cache-dir pytest
+RUN pip3 install --no-cache-dir "pytest==${PYTEST_VERSION}"
 
 # ----------------------------------------------------------------------------
 # Typst (formal document compiler)
+#
+# This image is amd64 only (see header), so only the x86_64 Typst binary
+# is required.
 # ----------------------------------------------------------------------------
-ARG TYPST_VERSION=0.14.2
 RUN wget -q "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-x86_64-unknown-linux-musl.tar.xz" \
+ && echo "${TYPST_SHA256_AMD64}  typst-x86_64-unknown-linux-musl.tar.xz" | sha256sum -c - \
  && tar xf typst-x86_64-unknown-linux-musl.tar.xz \
  && install -m 0755 typst-x86_64-unknown-linux-musl/typst /usr/local/bin/typst \
  && rm -rf typst-x86_64-unknown-linux-musl*

@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Reproducibility Policy section in README.md documenting version-pinning
+  requirements for tools installed in Dockerfiles.
+- SHA256 verification for Typst, Bazelisk, Buf, golangci-lint, and
+  cargo-binstall downloads.
+- `TYPST_SHA256_AMD64` / `TYPST_SHA256_ARM64` build args; Typst install is
+  now architecture-aware across all arm64-capable images (previously
+  downloaded the x86_64 binary unconditionally).
+
+### Changed
+
+- Pinned `go install` tool versions (gopls v0.21.1, delve v1.26.1,
+  staticcheck 2026.1, protoc-gen-go v1.36.11, protoc-gen-go-grpc v1.6.1)
+  in `go/Dockerfile` — previously installed from `@latest`.
+- Replaced `curl | sh` installer for golangci-lint with a SHA256-verified
+  tarball download pinned to v2.11.4.
+- Pinned Rust toolchain to 1.95.0 in `rust/Dockerfile` — previously
+  followed the `stable` channel.
+- Replaced `curl | bash` installer for cargo-binstall with a
+  SHA256-verified tarball pinned to v1.18.1.
+- Pinned cargo-installed tools: probe-rs-tools 0.31.0, cargo-generate
+  0.23.8, cargo-expand 1.0.121, sccache 0.14.0.
+- Pinned vcpkg to tagged release 2026.03.18 in `cpp/Dockerfile` — previously
+  cloned HEAD of the default branch.
+- Pinned pytest to 9.0.3 across all six Dockerfiles — previously installed
+  the latest version on the PyPI index at build time.
+
 ## [1.0.0] - 2026-04-06
 
 ### Added

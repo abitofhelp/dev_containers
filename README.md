@@ -95,8 +95,35 @@ and container environments, or debugging UID/mount issues.
 | **Debugger** | gdb, strace |
 | **Build** | make, pkg-config |
 | **Pagers** | less, more, file, jq, lsof |
+| **Documentation** | typst (formal document compiler) |
 
 See each image's Dockerfile for the full list of language-specific tools.
+
+## Reproducibility Policy
+
+To keep image builds reproducible, every tool installed in a Dockerfile MUST
+be pinned to a specific version. When downloading binaries or tarballs,
+also verify a SHA256 checksum.
+
+Pin at the most specific level available:
+
+- **Base images** — pin by SHA256 digest (e.g., `ubuntu:24.04@sha256:…`).
+- **Downloadable binaries/tarballs** — pin `*_VERSION` and verify `*_SHA256`.
+- **Package managers** — pin tool versions (e.g., `go install …@v1.2.3`,
+  `cargo install --version X.Y.Z`, `rustup toolchain install 1.85.1`).
+- **Git clones** — check out a tagged release, not a moving branch.
+- **APT packages** — use versioned package names where available
+  (`gnat-13`, `clang-20`); Ubuntu's archive rotates exact versions, so
+  exact-version apt pinning is discouraged.
+
+Avoid `@latest`, `stable`, `HEAD`, `main`, and unverified downloads. If
+you add a tool, add a `TOOLNAME_VERSION` (and `TOOLNAME_SHA256` where the
+tool ships a binary release) to the `ARG` block at the top of the
+Dockerfile.
+
+The Ada images are the current reference for this policy: the Ubuntu base
+image, Alire, GNAT, and GPRBuild are all version-pinned with SHA256
+verification where applicable.
 
 ## How It Works
 

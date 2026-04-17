@@ -82,9 +82,14 @@ FROM ubuntu:24.04@sha256:d1e2e92c075e5ca139d51a140fff46f84315c0fdce203eab2807c7e
 # ----------------------------------------------------------------------------
 ARG CLANG_VERSION=20
 ARG DEBIAN_FRONTEND=noninteractive
+ARG PYTEST_VERSION=9.0.3
+ARG TYPST_SHA256_AMD64=a6044cbad2a954deb921167e257e120ac0a16b20339ec01121194ff9d394996d
+ARG TYPST_SHA256_ARM64=491b101aa40a3a7ea82a3f8a6232cabb4e6a7e233810082e5ac812d43fdcd47a
+ARG TYPST_VERSION=0.14.2
 ARG USER_GID=1000
 ARG USERNAME=dev
 ARG USER_UID=1000
+ARG VCPKG_VERSION=2026.03.18
 
 # ----------------------------------------------------------------------------
 # Environment variables (alphabetized)
@@ -253,9 +258,9 @@ RUN set -eux; \
 COPY LICENSE /usr/share/doc/dev-containers/LICENSE
 
 # ----------------------------------------------------------------------------
-# Install vcpkg (C++ package manager)
+# Install vcpkg (C++ package manager, pinned to a tagged release)
 # ----------------------------------------------------------------------------
-RUN git clone --depth 1 https://github.com/microsoft/vcpkg.git /opt/vcpkg \
+RUN git clone --depth 1 --branch "${VCPKG_VERSION}" https://github.com/microsoft/vcpkg.git /opt/vcpkg \
  && /opt/vcpkg/bootstrap-vcpkg.sh -disableMetrics \
  && ln -s /opt/vcpkg/vcpkg /usr/local/bin/vcpkg \
  && chown -R "${USER_UID}:${USER_GID}" /opt/vcpkg
@@ -307,16 +312,20 @@ USER root
 # ----------------------------------------------------------------------------
 # Python packages (pytest for test automation)
 # ----------------------------------------------------------------------------
-RUN pip3 install --no-cache-dir --break-system-packages pytest
+RUN pip3 install --no-cache-dir --break-system-packages "pytest==${PYTEST_VERSION}"
 
 # ----------------------------------------------------------------------------
 # Typst (formal document compiler)
 # ----------------------------------------------------------------------------
-ARG TYPST_VERSION=0.14.2
-RUN wget -q "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-x86_64-unknown-linux-musl.tar.xz" \
- && tar xf typst-x86_64-unknown-linux-musl.tar.xz \
- && install -m 0755 typst-x86_64-unknown-linux-musl/typst /usr/local/bin/typst \
- && rm -rf typst-x86_64-unknown-linux-musl*
+RUN ARCH=$(dpkg --print-architecture) \
+ && if [ "$ARCH" = "amd64" ]; then TYPST_ARCH="x86_64"; TYPST_SHA256="${TYPST_SHA256_AMD64}"; \
+    elif [ "$ARCH" = "arm64" ]; then TYPST_ARCH="aarch64"; TYPST_SHA256="${TYPST_SHA256_ARM64}"; \
+    else echo "Unsupported architecture: $ARCH" && exit 1; fi \
+ && wget -q "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-${TYPST_ARCH}-unknown-linux-musl.tar.xz" \
+ && echo "${TYPST_SHA256}  typst-${TYPST_ARCH}-unknown-linux-musl.tar.xz" | sha256sum -c - \
+ && tar xf "typst-${TYPST_ARCH}-unknown-linux-musl.tar.xz" \
+ && install -m 0755 "typst-${TYPST_ARCH}-unknown-linux-musl/typst" /usr/local/bin/typst \
+ && rm -rf typst-*-unknown-linux-musl*
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

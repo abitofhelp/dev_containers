@@ -80,12 +80,28 @@ FROM ubuntu:24.04@sha256:d1e2e92c075e5ca139d51a140fff46f84315c0fdce203eab2807c7e
 # ----------------------------------------------------------------------------
 # Build arguments (alphabetized)
 # ----------------------------------------------------------------------------
+ARG BAZELISK_SHA256_AMD64=fd8fdff418a1758887520fa42da7e6ae39aefc788cf5e7f7bb8db6934d279fc4
+ARG BAZELISK_SHA256_ARM64=4c8d966e40ac2c4efcc7f1a5a5cceef2c0a2f16b957e791fa7a867cce31e8fcb
 ARG BAZELISK_VERSION=v1.25.0
+ARG BUF_SHA256_AMD64=154ea883ce098eac4fa106ff9ee4e4964bb97f809dd8ec9c34a432b466ce1494
+ARG BUF_SHA256_ARM64=5d630153d4d7aae1093f964ed15f1391ce9288f2d4192a4818c18443b3565bbf
 ARG BUF_VERSION=1.50.0
 ARG DEBIAN_FRONTEND=noninteractive
+ARG DELVE_VERSION=v1.26.1
 ARG GO_SHA256_AMD64=031f088e5d955bab8657ede27ad4e3bc5b7c1ba281f05f245bcc304f327c987a
 ARG GO_SHA256_ARM64=a290581cfe4fe28ddd737dde3095f3dbeb7f2e4065cab4eae44dfc53b760c2f7
 ARG GO_VERSION=1.26.1
+ARG GOLANGCI_LINT_SHA256_AMD64=200c5b7503f67b59a6743ccf32133026c174e272b930ee79aa2aa6f37aca7ef1
+ARG GOLANGCI_LINT_SHA256_ARM64=3bcfa2e6f3d32b2bf5cd75eaa876447507025e0303698633f722a05331988db4
+ARG GOLANGCI_LINT_VERSION=2.11.4
+ARG GOPLS_VERSION=v0.21.1
+ARG PROTOC_GEN_GO_GRPC_VERSION=v1.6.1
+ARG PROTOC_GEN_GO_VERSION=v1.36.11
+ARG PYTEST_VERSION=9.0.3
+ARG STATICCHECK_VERSION=2026.1
+ARG TYPST_SHA256_AMD64=a6044cbad2a954deb921167e257e120ac0a16b20339ec01121194ff9d394996d
+ARG TYPST_SHA256_ARM64=491b101aa40a3a7ea82a3f8a6232cabb4e6a7e233810082e5ac812d43fdcd47a
+ARG TYPST_VERSION=0.14.2
 ARG USER_GID=1000
 ARG USERNAME=dev
 ARG USER_UID=1000
@@ -169,40 +185,57 @@ RUN ARCH=$(dpkg --print-architecture) \
 # Install Bazelisk (as /usr/local/bin/bazel for seamless Bzlmod workflows)
 # ----------------------------------------------------------------------------
 RUN ARCH=$(dpkg --print-architecture) \
+ && if [ "$ARCH" = "amd64" ]; then BAZELISK_SHA256="${BAZELISK_SHA256_AMD64}"; \
+    elif [ "$ARCH" = "arm64" ]; then BAZELISK_SHA256="${BAZELISK_SHA256_ARM64}"; \
+    else echo "Unsupported architecture: $ARCH" && exit 1; fi \
  && wget -qO /usr/local/bin/bazel \
     "https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-linux-${ARCH}" \
+ && echo "${BAZELISK_SHA256}  /usr/local/bin/bazel" | sha256sum -c - \
  && chmod +x /usr/local/bin/bazel
 
 # ----------------------------------------------------------------------------
 # Install buf (protobuf linting, formatting, breaking change detection)
 # ----------------------------------------------------------------------------
 RUN ARCH=$(dpkg --print-architecture) \
- && if [ "$ARCH" = "amd64" ]; then BUF_ARCH="x86_64"; \
-    elif [ "$ARCH" = "arm64" ]; then BUF_ARCH="aarch64"; fi \
+ && if [ "$ARCH" = "amd64" ]; then BUF_ARCH="x86_64"; BUF_SHA256="${BUF_SHA256_AMD64}"; \
+    elif [ "$ARCH" = "arm64" ]; then BUF_ARCH="aarch64"; BUF_SHA256="${BUF_SHA256_ARM64}"; \
+    else echo "Unsupported architecture: $ARCH" && exit 1; fi \
  && wget -qO /usr/local/bin/buf \
     "https://github.com/bufbuild/buf/releases/download/v${BUF_VERSION}/buf-Linux-${BUF_ARCH}" \
+ && echo "${BUF_SHA256}  /usr/local/bin/buf" | sha256sum -c - \
  && chmod +x /usr/local/bin/buf
 
 # ----------------------------------------------------------------------------
 # Install Go development tools (system-wide to /usr/local/bin)
+#
+# Versions are pinned via ARG; the Go module proxy verifies downloads
+# against each module's go.sum, so no separate SHA256 is required.
 # ----------------------------------------------------------------------------
 RUN GOBIN=/usr/local/bin GOPATH=/tmp/go-build \
-    go install golang.org/x/tools/gopls@latest \
+    go install "golang.org/x/tools/gopls@${GOPLS_VERSION}" \
  && GOBIN=/usr/local/bin GOPATH=/tmp/go-build \
-    go install github.com/go-delve/delve/cmd/dlv@latest \
+    go install "github.com/go-delve/delve/cmd/dlv@${DELVE_VERSION}" \
  && GOBIN=/usr/local/bin GOPATH=/tmp/go-build \
-    go install honnef.co/go/tools/cmd/staticcheck@latest \
+    go install "honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION}" \
  && GOBIN=/usr/local/bin GOPATH=/tmp/go-build \
-    go install google.golang.org/protobuf/cmd/protoc-gen-go@latest \
+    go install "google.golang.org/protobuf/cmd/protoc-gen-go@${PROTOC_GEN_GO_VERSION}" \
  && GOBIN=/usr/local/bin GOPATH=/tmp/go-build \
-    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest \
+    go install "google.golang.org/grpc/cmd/protoc-gen-go-grpc@${PROTOC_GEN_GO_GRPC_VERSION}" \
  && rm -rf /tmp/go-build
 
 # ----------------------------------------------------------------------------
-# Install golangci-lint (binary installer, per official recommendation)
+# Install golangci-lint (release tarball, SHA256-verified)
 # ----------------------------------------------------------------------------
-RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh \
-    | sh -s -- -b /usr/local/bin
+RUN ARCH=$(dpkg --print-architecture) \
+ && if [ "$ARCH" = "amd64" ]; then GOLANGCI_LINT_SHA256="${GOLANGCI_LINT_SHA256_AMD64}"; \
+    elif [ "$ARCH" = "arm64" ]; then GOLANGCI_LINT_SHA256="${GOLANGCI_LINT_SHA256_ARM64}"; \
+    else echo "Unsupported architecture: $ARCH" && exit 1; fi \
+ && wget -qO /tmp/golangci-lint.tar.gz \
+    "https://github.com/golangci/golangci-lint/releases/download/v${GOLANGCI_LINT_VERSION}/golangci-lint-${GOLANGCI_LINT_VERSION}-linux-${ARCH}.tar.gz" \
+ && echo "${GOLANGCI_LINT_SHA256}  /tmp/golangci-lint.tar.gz" | sha256sum -c - \
+ && tar -xzf /tmp/golangci-lint.tar.gz -C /tmp \
+ && install -m 0755 "/tmp/golangci-lint-${GOLANGCI_LINT_VERSION}-linux-${ARCH}/golangci-lint" /usr/local/bin/ \
+ && rm -rf /tmp/golangci-lint*
 
 # ----------------------------------------------------------------------------
 # Create developer user
@@ -273,16 +306,20 @@ USER root
 # ----------------------------------------------------------------------------
 # Python packages (pytest for test automation)
 # ----------------------------------------------------------------------------
-RUN pip3 install --no-cache-dir --break-system-packages pytest
+RUN pip3 install --no-cache-dir --break-system-packages "pytest==${PYTEST_VERSION}"
 
 # ----------------------------------------------------------------------------
 # Typst (formal document compiler)
 # ----------------------------------------------------------------------------
-ARG TYPST_VERSION=0.14.2
-RUN wget -q "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-x86_64-unknown-linux-musl.tar.xz" \
- && tar xf typst-x86_64-unknown-linux-musl.tar.xz \
- && install -m 0755 typst-x86_64-unknown-linux-musl/typst /usr/local/bin/typst \
- && rm -rf typst-x86_64-unknown-linux-musl*
+RUN ARCH=$(dpkg --print-architecture) \
+ && if [ "$ARCH" = "amd64" ]; then TYPST_ARCH="x86_64"; TYPST_SHA256="${TYPST_SHA256_AMD64}"; \
+    elif [ "$ARCH" = "arm64" ]; then TYPST_ARCH="aarch64"; TYPST_SHA256="${TYPST_SHA256_ARM64}"; \
+    else echo "Unsupported architecture: $ARCH" && exit 1; fi \
+ && wget -q "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-${TYPST_ARCH}-unknown-linux-musl.tar.xz" \
+ && echo "${TYPST_SHA256}  typst-${TYPST_ARCH}-unknown-linux-musl.tar.xz" | sha256sum -c - \
+ && tar xf "typst-${TYPST_ARCH}-unknown-linux-musl.tar.xz" \
+ && install -m 0755 "typst-${TYPST_ARCH}-unknown-linux-musl/typst" /usr/local/bin/typst \
+ && rm -rf typst-*-unknown-linux-musl*
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
