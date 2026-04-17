@@ -20,7 +20,16 @@ All images are published to GitHub Container Registry:
 
 ```text
 ghcr.io/abitofhelp/<image-name>:latest
+ghcr.io/abitofhelp/<image-name>:v<X.Y.Z>
 ```
+
+### Versioning
+
+All six images share a single repository version. A `vX.Y.Z` tag on this
+repo produces the matching `ghcr.io/abitofhelp/<image>:vX.Y.Z` for every
+image in the same release. The `:latest` tag always points to the most
+recent non-pre-release version. See [CHANGELOG.md](CHANGELOG.md) for the
+current release and history.
 
 ## Quick Start
 
