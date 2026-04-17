@@ -9,7 +9,7 @@
 #
 # Ada Development Container — Alire-managed Toolchain
 #
-# Repository: dev_container_ada
+# Repository: dev_containers
 # Docker Image: ghcr.io/abitofhelp/dev-container-ada
 #
 # This Dockerfile uses Ubuntu 22.04 as the base image and installs GNAT

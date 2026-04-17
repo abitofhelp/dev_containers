@@ -9,7 +9,7 @@
 #
 # Rust Development Container
 #
-# Repository: dev_container_rust
+# Repository: dev_containers
 # Docker Image: ghcr.io/abitofhelp/dev-container-rust
 #
 # This Dockerfile uses Ubuntu 24.04 as the base image and adds:

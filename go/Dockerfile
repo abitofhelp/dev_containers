@@ -9,7 +9,7 @@
 #
 # Go Development Container — Official Toolchain
 #
-# Repository: dev_container_go
+# Repository: dev_containers
 # Docker Image: ghcr.io/abitofhelp/dev-container-go
 #
 # This Dockerfile uses Ubuntu 24.04 as the base image and adds:

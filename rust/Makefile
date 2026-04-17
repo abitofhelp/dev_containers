@@ -6,7 +6,7 @@
 # See LICENSE file in the project root.
 # ============================================================================
 #
-# Thin wrapper for the dev_container_rust image.
+# Thin wrapper for the Rust image in dev_containers.
 # Sets Rust-specific variables, then includes the shared Makefile.common.
 # ============================================================================
 
@@ -17,7 +17,7 @@
 # ----------------------------------------------------------------------------
 LANG_DIR     := rust
 IMAGE_NAME   := dev-container-rust
-PROJECT_NAME ?= dev_container_rust
+PROJECT_NAME ?= dev_containers
 
 # ----------------------------------------------------------------------------
 # Include shared targets

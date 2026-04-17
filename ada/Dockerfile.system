@@ -9,7 +9,7 @@
 #
 # Ada Development Container — System Toolchain
 #
-# Repository: dev_container_ada
+# Repository: dev_containers
 # Docker Image: ghcr.io/abitofhelp/dev-container-ada-system
 #
 # This Dockerfile uses Ubuntu 24.04 as the base image and installs GNAT

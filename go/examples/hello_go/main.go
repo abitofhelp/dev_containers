@@ -6,6 +6,6 @@ package main
 import "fmt"
 
 func main() {
-	fmt.Println("Hello from Go in dev_container_go!")
+	fmt.Println("Hello from Go in dev_containers!")
 	fmt.Println("Toolchain verification: PASSED")
 }

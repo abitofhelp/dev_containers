@@ -6,7 +6,7 @@
 # See LICENSE file in the project root.
 # ============================================================================
 #
-# Thin wrapper for the dev_container_ada images.
+# Thin wrapper for the Ada images in dev_containers.
 # Sets Ada-specific variables, then includes the shared Makefile.common.
 # ============================================================================
 
@@ -18,7 +18,7 @@
 LANG_DIR          := ada
 IMAGE_NAME        := dev-container-ada
 SYSTEM_IMAGE_NAME := $(IMAGE_NAME)-system
-PROJECT_NAME      ?= dev_container_ada
+PROJECT_NAME      ?= dev_containers
 
 # ----------------------------------------------------------------------------
 # Toolchain versions (build-time)

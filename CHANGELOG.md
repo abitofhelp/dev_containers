@@ -81,10 +81,7 @@ container images (`dev-container-ada`, `dev-container-ada-system`,
 
 ### Previous History
 
-For changes prior to the monorepo consolidation, see the archived individual
-repositories:
-
-- [dev_container_ada](https://github.com/abitofhelp/dev_container_ada) (archived)
-- [dev_container_cpp](https://github.com/abitofhelp/dev_container_cpp) (archived)
-- [dev_container_go](https://github.com/abitofhelp/dev_container_go) (archived)
-- [dev_container_rust](https://github.com/abitofhelp/dev_container_rust) (archived)
+The pre-monorepo per-language repositories (`dev_container_ada`,
+`dev_container_cpp`, `dev_container_go`, `dev_container_rust`) have been
+retired and deleted. Their histories were consolidated into this
+repository's commit stream at the time of the monorepo migration.

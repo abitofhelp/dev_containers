@@ -6,7 +6,7 @@
 # See LICENSE file in the project root.
 # ============================================================================
 #
-# Thin wrapper for the dev_container_cpp images.
+# Thin wrapper for the C++ images in dev_containers.
 # Sets C++-specific variables, then includes the shared Makefile.common.
 # ============================================================================
 
@@ -18,7 +18,7 @@
 LANG_DIR          := cpp
 IMAGE_NAME        := dev-container-cpp
 SYSTEM_IMAGE_NAME := $(IMAGE_NAME)-system
-PROJECT_NAME      ?= dev_container_cpp
+PROJECT_NAME      ?= dev_containers
 
 # ----------------------------------------------------------------------------
 # Build arguments (none for C++)

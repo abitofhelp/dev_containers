@@ -9,7 +9,7 @@
 #
 # C++ Development Container — Upstream Toolchains
 #
-# Repository: dev_container_cpp
+# Repository: dev_containers
 # Docker Image: ghcr.io/abitofhelp/dev-container-cpp
 #
 # This Dockerfile uses Ubuntu 24.04 as the base image and adds:

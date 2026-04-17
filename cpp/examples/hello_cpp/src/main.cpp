@@ -5,7 +5,7 @@
 #include <string_view>
 
 auto main() -> int {
-    constexpr std::string_view message{"Hello from C++ in dev_container_cpp!"};
+    constexpr std::string_view message{"Hello from C++ in dev_containers!"};
     std::cout << message << '\n';
     std::cout << "Toolchain verification: PASSED\n";
     return 0;
