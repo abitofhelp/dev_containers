@@ -114,11 +114,8 @@ echo "USER=$$(whoami) UID=$$(id -u) GID=$$(id -g) HOME=$$HOME"
 echo "DISPLAY_USER=$$DISPLAY_USER"
 echo "CONTAINER_RUNTIME=$$CONTAINER_RUNTIME"
 echo ""
-echo "=== Compile test ==="
-alr exec -- gprbuild -P hello_ada.gpr -j0
-echo ""
-echo "=== Run test ==="
-bin/hello_ada
+echo "=== Build + run test ==="
+alr run
 echo ""
 echo "=== Toolchain versions ==="
 alr exec -- gnat --version | head -1
@@ -135,11 +132,8 @@ echo "USER=$$(whoami) UID=$$(id -u) GID=$$(id -g) HOME=$$HOME"
 echo "DISPLAY_USER=$$DISPLAY_USER"
 echo "CONTAINER_RUNTIME=$$CONTAINER_RUNTIME"
 echo ""
-echo "=== Compile test ==="
-gprbuild -P hello_ada.gpr -j0
-echo ""
-echo "=== Run test ==="
-bin/hello_ada
+echo "=== Build + run test ==="
+alr run
 echo ""
 echo "=== Toolchain versions ==="
 gnat --version | head -1
