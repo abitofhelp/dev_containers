@@ -12,6 +12,27 @@ go 1.1.0, rust 1.0.2) are retired.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-04-17
+
+Cosmetic cleanup following deletion of the archived pre-monorepo
+repositories. No runtime behavior changes in any image.
+
+### Changed
+
+- CHANGELOG.md: drop dead hyperlinks to the retired repositories in the
+  `Previous History` subsection of 1.0.0; keep the historical names as
+  plain-text references for context.
+- Dockerfile headers (6 files): `# Repository: dev_container_<lang>`
+  updated to `# Repository: dev_containers`.
+- Per-language Makefiles (4 files): wrapper comment and `PROJECT_NAME`
+  updated to reference `dev_containers`. `PROJECT_NAME` only affects
+  `make archive` tarball naming; image names are unchanged.
+- Hello-world examples (4 files): stdout string updated from
+  `Hello from <Lang> in dev_container_<lang>!` to
+  `Hello from <Lang> in dev_containers!`.
+- `ada/examples/hello_ada/alire.toml`: `website` URL updated to
+  `https://github.com/abitofhelp/dev_containers`.
+
 ## [1.0.0] - 2026-04-17
 
 First unified release of the consolidated dev containers monorepo. All six
