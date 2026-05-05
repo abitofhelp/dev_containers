@@ -165,6 +165,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     xz-utils \
     zip \
+    zlib1g-dev \
     zsh \
     zsh-autosuggestions \
     zsh-syntax-highlighting \
