@@ -181,6 +181,35 @@ alias cdoc='cargo doc --open'
 alias cadd='cargo add'
 alias cup='cargo update'
 
+# Teensy 4.1 helpers — build Intel HEX output and program PJRC Teensy 4.1.
+# These assume the current directory is a Teensy 4 Rust project using the
+# thumbv7em-none-eabihf target, such as mciantyre/teensy4-rs-template.
+teensy41_template() {
+    local name="${1:-hello-teensy41}"
+    cargo generate --git https://github.com/mciantyre/teensy4-rs-template --name "$name"
+    echo "Generated $name. For Teensy 4.1, use board::t41 in src/main.rs."
+}
+
+teensy41_hex() {
+    local out="${1:-target.hex}"
+    cargo objcopy --release -- -O ihex "$out"
+    echo "Wrote $out"
+}
+
+teensy41_flash() {
+    local hex="${1:-target.hex}"
+    if [[ ! -f "$hex" ]]; then
+        echo "Error: '$hex' does not exist. Run: teensy41_hex $hex" >&2
+        return 1
+    fi
+    teensy_loader_cli --mcu=TEENSY41 -w -v "$hex"
+}
+
+teensy41_build_flash() {
+    local hex="${1:-target.hex}"
+    teensy41_hex "$hex" && teensy41_flash "$hex"
+}
+
 # Aliases — diagnostics
 alias cenv='printenv | sort'
 alias cid='cat /etc/hostname'

@@ -50,6 +50,35 @@ log_error() {
 }
 
 # ----------------------------------------------------------------------------
+# Runtime language cache setup
+# ----------------------------------------------------------------------------
+setup_rust_runtime_home() {
+    # The Rust image keeps the toolchain and preinstalled cargo subcommands in
+    # /opt for image reproducibility.  Cargo's mutable runtime state must live
+    # in the adapted user's home so bind-mounted workspaces can build as a
+    # non-root user without trying to write into image-owned directories.
+    if [ ! -d /opt/cargo/bin ]; then
+        return 0
+    fi
+
+    local runtime_home="${HOME:-${TARGET_HOME:-${FALLBACK_HOME}}}"
+    local runtime_cargo_home="${runtime_home}/.cargo"
+
+    export CARGO_HOME="${runtime_cargo_home}"
+    export PATH="${CARGO_HOME}/bin:/opt/cargo/bin:${PATH}"
+
+    mkdir -p \
+        "${CARGO_HOME}/bin" \
+        "${CARGO_HOME}/git" \
+        "${CARGO_HOME}/registry" \
+        2>/dev/null || true
+
+    if [ "$(id -u)" = "0" ] && [ -n "${HOST_UID:-}" ] && [ -n "${HOST_GID:-}" ]; then
+        chown -R "${HOST_UID}:${HOST_GID}" "${CARGO_HOME}" 2>/dev/null || true
+    fi
+}
+
+# ----------------------------------------------------------------------------
 # Container detection markers — exported so .zshrc can use them directly.
 # ----------------------------------------------------------------------------
 export IN_CONTAINER=1
@@ -82,6 +111,8 @@ fi
 # ----------------------------------------------------------------------------
 if [ "$(id -u)" != "0" ]; then
     export DISPLAY_USER="${HOST_USER:-$(whoami)}"
+    export HOME="${HOME:-$(getent passwd "$(id -u)" | cut -d: -f6)}"
+    setup_rust_runtime_home
     exec "$@"
 fi
 
@@ -250,9 +281,11 @@ run_fallback() {
     export DISPLAY_USER="${FALLBACK_USER}"
     if is_rootless; then
         export HOME="${FALLBACK_HOME}"
+        setup_rust_runtime_home
         exec "$@"
     else
         export HOME="${FALLBACK_HOME}"
+        setup_rust_runtime_home
         exec gosu "${FALLBACK_USER}" "$@"
     fi
 }
@@ -273,9 +306,11 @@ if is_rootless; then
     # subordinate UID and break bind-mount access.  Stay as UID 0 but use
     # the adapted user's home directory for shell configuration.
     export HOME="${TARGET_HOME}"
+    setup_rust_runtime_home
     exec "$@"
 else
     # Rootful runtime.  Drop privileges to the real user.
     export HOME="${TARGET_HOME}"
+    setup_rust_runtime_home
     exec gosu "${HOST_USER}" "$@"
 fi

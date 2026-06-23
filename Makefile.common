@@ -205,13 +205,19 @@ endif
 # ----------------------------------------------------------------------------
 # Docker convenience aliases
 # ----------------------------------------------------------------------------
+# Keep these aliases in the same make invocation instead of recursively calling
+# $(MAKE). Users commonly invoke language Makefiles with `make -f rust/Makefile
+# docker-build` from the repository root; recursive make does not reliably
+# preserve that `-f` context across GNU Make versions and host platforms.
+# Target-specific CONTAINER_CLI assignments keep the aliases thin while
+# preserving the included language Makefile state.
 .PHONY: docker-pull
-docker-pull:
-	$(MAKE) pull CONTAINER_CLI=docker
+docker-pull: CONTAINER_CLI=docker
+docker-pull: pull
 
 .PHONY: docker-build
-docker-build:
-	$(MAKE) build CONTAINER_CLI=docker
+docker-build: CONTAINER_CLI=docker
+docker-build: build
 
 .PHONY: docker-run
 docker-run:
@@ -219,12 +225,12 @@ docker-run:
 
 ifdef SYSTEM_IMAGE_NAME
 .PHONY: docker-pull-system
-docker-pull-system:
-	$(MAKE) pull-system CONTAINER_CLI=docker
+docker-pull-system: CONTAINER_CLI=docker
+docker-pull-system: pull-system
 
 .PHONY: docker-build-system
-docker-build-system:
-	$(MAKE) build-system CONTAINER_CLI=docker
+docker-build-system: CONTAINER_CLI=docker
+docker-build-system: build-system
 
 .PHONY: docker-run-system
 docker-run-system:
@@ -239,12 +245,12 @@ endif
 # needed.  The entrypoint detects a non-root UID and execs the CMD directly.
 # ----------------------------------------------------------------------------
 .PHONY: podman-pull
-podman-pull:
-	$(MAKE) pull CONTAINER_CLI=podman
+podman-pull: CONTAINER_CLI=podman
+podman-pull: pull
 
 .PHONY: podman-build
-podman-build:
-	$(MAKE) build CONTAINER_CLI=podman
+podman-build: CONTAINER_CLI=podman
+podman-build: build
 
 .PHONY: podman-run
 podman-run:
@@ -252,12 +258,12 @@ podman-run:
 
 ifdef SYSTEM_IMAGE_NAME
 .PHONY: podman-pull-system
-podman-pull-system:
-	$(MAKE) pull-system CONTAINER_CLI=podman
+podman-pull-system: CONTAINER_CLI=podman
+podman-pull-system: pull-system
 
 .PHONY: podman-build-system
-podman-build-system:
-	$(MAKE) build-system CONTAINER_CLI=podman
+podman-build-system: CONTAINER_CLI=podman
+podman-build-system: build-system
 
 .PHONY: podman-run-system
 podman-run-system:

@@ -40,6 +40,10 @@ help:
 	@echo "  test                 Smoke test (nerdctl rootless)"
 	@echo "  test-docker          Smoke test (docker rootful)"
 	@echo "  test-podman          Smoke test (podman rootless)"
+	@echo "  test-teensy41        Build-only Teensy 4.1 Rust .hex smoke test"
+	@echo "  test-teensy41-docker Build-only Teensy 4.1 smoke test with docker"
+	@echo "  test-teensy41-podman Build-only Teensy 4.1 smoke test with podman"
+	@echo "  clean-teensy41       Remove Teensy 4.1 example build outputs"
 	@echo "  save                 Save the image to dist/"
 	@echo "  show-tags            Show suggested tags"
 	@echo "  tag-version          Tag local image with Rust version"
@@ -71,6 +75,7 @@ help:
 # Test scripts
 # ----------------------------------------------------------------------------
 EXAMPLE_DIR := examples/hello_rust
+TEENSY41_EXAMPLE_DIR := examples/teensy41_blink
 
 define TEST_SCRIPT
 set -e
@@ -78,6 +83,8 @@ echo "=== Environment ==="
 echo "USER=$$(whoami) UID=$$(id -u) GID=$$(id -g) HOME=$$HOME"
 echo "DISPLAY_USER=$$DISPLAY_USER"
 echo "CONTAINER_RUNTIME=$$CONTAINER_RUNTIME"
+echo "CARGO_HOME=$$CARGO_HOME"
+test -w "$$CARGO_HOME"
 echo ""
 echo "=== Compile test (cargo build) ==="
 cargo build 2>&1
@@ -88,13 +95,112 @@ echo ""
 echo "=== Toolchain versions ==="
 rustc --version
 cargo --version
-rustup target list --installed | head -6
+rustup target list --installed
 probe-rs --version
 mold --version
 arm-linux-gnueabihf-gcc --version | head -1
+check_teensy41_loader() {
+    local status
+    if teensy_loader_cli --list-mcus > /tmp/teensy_mcus.txt 2>&1; then
+        status=0
+    else
+        status=$$?
+    fi
+    if [ "$$status" -ne 0 ] && [ "$$status" -ne 1 ]; then
+        cat /tmp/teensy_mcus.txt >&2
+        return "$$status"
+    fi
+    if ! grep -Fxq " - TEENSY41" /tmp/teensy_mcus.txt; then
+        echo "TEENSY41 not found in teensy_loader_cli --list-mcus output" >&2
+        cat /tmp/teensy_mcus.txt >&2
+        return 1
+    fi
+    rm -f /tmp/teensy_mcus.txt
+}
+check_teensy41_loader
 echo "=== Test passed ==="
 endef
 export TEST_SCRIPT
+
+define TEENSY41_TEST_SCRIPT
+set -e
+echo "=== Teensy 4.1 toolchain ==="
+rustc --version
+cargo --version
+cargo objcopy --version
+echo "CARGO_HOME=$$CARGO_HOME"
+test -w "$$CARGO_HOME"
+rustup target list --installed | grep -q thumbv7em-none-eabihf
+check_teensy41_loader() {
+    local status
+    if teensy_loader_cli --list-mcus > /tmp/teensy_mcus.txt 2>&1; then
+        status=0
+    else
+        status=$$?
+    fi
+    if [ "$$status" -ne 0 ] && [ "$$status" -ne 1 ]; then
+        cat /tmp/teensy_mcus.txt >&2
+        return "$$status"
+    fi
+    if ! grep -Fxq " - TEENSY41" /tmp/teensy_mcus.txt; then
+        echo "TEENSY41 not found in teensy_loader_cli --list-mcus output" >&2
+        cat /tmp/teensy_mcus.txt >&2
+        return 1
+    fi
+    rm -f /tmp/teensy_mcus.txt
+}
+check_teensy41_loader
+echo ""
+echo "=== Build Teensy 4.1 HEX ==="
+cargo objcopy --release -- -O ihex teensy41_blink.hex
+test -s teensy41_blink.hex
+ls -lh teensy41_blink.hex
+echo "=== Teensy 4.1 test passed ==="
+endef
+export TEENSY41_TEST_SCRIPT
+
+# ----------------------------------------------------------------------------
+# Teensy 4.1 smoke test
+# ----------------------------------------------------------------------------
+.PHONY: test-teensy41
+test-teensy41:
+	$(CONTAINER_CLI) run --rm \
+		-e HOST_UID=$(HOST_UID) \
+		-e HOST_GID=$(HOST_GID) \
+		-e HOST_USER=$(HOST_USER) \
+		-v "$(REPO_ROOT)$(LANG_DIR)":/workspace \
+		-w /workspace/$(TEENSY41_EXAMPLE_DIR) \
+		$(IMAGE_NAME) \
+		bash -c "$$TEENSY41_TEST_SCRIPT"
+
+.PHONY: test-teensy41-docker
+test-teensy41-docker:
+	docker run --rm \
+		-e HOST_UID=$(HOST_UID) \
+		-e HOST_GID=$(HOST_GID) \
+		-e HOST_USER=$(HOST_USER) \
+		-v "$(REPO_ROOT)$(LANG_DIR)":/workspace \
+		-w /workspace/$(TEENSY41_EXAMPLE_DIR) \
+		$(IMAGE_NAME) \
+		bash -c "$$TEENSY41_TEST_SCRIPT"
+
+.PHONY: test-teensy41-podman
+test-teensy41-podman:
+	podman run --rm \
+		--userns=keep-id \
+		-v "$(REPO_ROOT)$(LANG_DIR)":/workspace \
+		-w /workspace/$(TEENSY41_EXAMPLE_DIR) \
+		$(IMAGE_NAME) \
+		bash -c "$$TEENSY41_TEST_SCRIPT"
+
+
+.PHONY: clean-teensy41
+clean-teensy41:
+	rm -rf "$(REPO_ROOT)$(LANG_DIR)/$(TEENSY41_EXAMPLE_DIR)/target"
+	rm -f "$(REPO_ROOT)$(LANG_DIR)/$(TEENSY41_EXAMPLE_DIR)"/*.hex
+	rm -f "$(REPO_ROOT)$(LANG_DIR)/$(TEENSY41_EXAMPLE_DIR)"/*.bin
+	rm -f "$(REPO_ROOT)$(LANG_DIR)/$(TEENSY41_EXAMPLE_DIR)"/*.elf
+	rm -f "$(REPO_ROOT)$(LANG_DIR)/$(TEENSY41_EXAMPLE_DIR)"/*.map
 
 # ----------------------------------------------------------------------------
 # Image management

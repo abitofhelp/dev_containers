@@ -48,8 +48,10 @@ and Bazelisk.
 ### 0.4 Rust
 
 Single image: `dev-container-rust` on Ubuntu 24.04 with Rust stable via
-rustup.  Includes embedded targets (Cortex-M0 through M33), probe-rs,
-cargo-binstall, and mold linker.
+rustup. Includes embedded targets (Cortex-M0 through M33), the
+`thumbv7em-none-eabihf` target used by Teensy 4.1, `cargo objcopy` via
+`cargo-binutils`, `teensy_loader_cli`, probe-rs, cargo-binstall, and mold
+linker.
 
 ---
 
@@ -219,6 +221,19 @@ COPY shared files (`entrypoint.sh`, `LICENSE`):
 docker build -f ada/Dockerfile -t dev-container-ada .
 ```
 
+Run language Makefiles from the repository root with `-f <lang>/Makefile`:
+
+```bash
+make -f rust/Makefile docker-build
+make -f rust/Makefile test-docker
+make -f rust/Makefile test-teensy41-docker
+```
+
+The `docker-*` and `podman-*` aliases are first-class targets. They must not
+shell out to a second unqualified `make` because that can lose the selected
+language Makefile on some hosts. Instead, the aliases set `CONTAINER_CLI` and
+reuse the shared target in the same invocation.
+
 ### Container launch
 
 The `run` targets delegate to `container_run.py` from the
@@ -258,14 +273,80 @@ This mounts the entire `abitofhelp` directory so that `../functional` and
 
 ## 6. Embedded Board Support
 
-Ada, C++, and Rust images include cross-compilers for two embedded targets:
+Ada, C++, and Rust images include embedded-development support. The exact
+tooling differs by language image:
 
-| Board | SoC | Core | Runtime | Cross-compiler |
-|-------|-----|------|---------|----------------|
-| STM32F769I Discovery | STM32F769NI | Cortex-M7 | Bare metal | `arm-none-eabi-gcc` |
-| STM32MP135F Discovery | STM32MP135F | Cortex-A7 | Linux | `arm-linux-gnueabihf-gcc` |
+| Board / Target | SoC / CPU | Core | Runtime | Image support |
+|----------------|-----------|------|---------|---------------|
+| STM32F769I Discovery | STM32F769NI | Cortex-M7 | Bare metal | Ada/C++ ARM bare-metal tooling |
+| STM32MP135F Discovery | STM32MP135F | Cortex-A7 | Linux | Ada/C++/Rust ARM Linux tooling |
+| Generic Cortex-M Rust | Board-specific | Cortex-M0 through M33 | Rust `no_std` bare metal | Rust `thumb*` targets plus `probe-rs` / `cargo-binutils` |
+| Teensy 4.1 | NXP i.MX RT1062 | Cortex-M7 | Rust `no_std` bare metal | `thumbv7em-none-eabihf`, `teensy4-bsp`, `cargo objcopy`, `teensy_loader_cli` |
 
-The bare-metal toolchain includes OpenOCD, stlink-tools, and gdb-multiarch.
+### 6.1 Rust target selection
+
+The Rust image installs several embedded targets. The target selects the CPU
+architecture and ABI; it does not select a board by itself.
+
+| Rust target | Typical use | Output |
+|-------------|-------------|--------|
+| `thumbv6m-none-eabi` | Cortex-M0/M0+ bare metal | ELF / BIN / HEX |
+| `thumbv7m-none-eabi` | Cortex-M3 bare metal | ELF / BIN / HEX |
+| `thumbv7em-none-eabi` | Cortex-M4/M7 soft-float ABI | ELF / BIN / HEX |
+| `thumbv7em-none-eabihf` | Cortex-M4F/M7F hard-float ABI, including Teensy 4.1 | ELF / Intel HEX |
+| `thumbv8m.main-none-eabihf` | Cortex-M33-class bare metal | ELF / BIN / HEX |
+| `armv7-unknown-linux-gnueabihf` | ARMv7 Linux userspace | Linux executable |
+
+For a new bare-metal board, add or select the Rust target, then provide the
+board-specific HAL/BSP, linker script, startup/runtime path, and flashing tool.
+
+### 6.2 Teensy 4.1 Rust workflow
+
+For Teensy 4.1 Rust work, start with the included example:
+
+```bash
+cd rust/examples/teensy41_blink
+cargo objcopy --release -- -O ihex teensy41_blink.hex
+```
+
+Flash when the host exposes the board to the process:
+
+```bash
+teensy_loader_cli --mcu=TEENSY41 -w -v teensy41_blink.hex
+```
+
+Or run the build-only smoke test from the repository root:
+
+```bash
+make -f rust/Makefile test-teensy41
+```
+
+The Rust image also provides convenience shell functions:
+
+```bash
+teensy41_template hello-teensy41
+teensy41_hex target.hex
+teensy41_flash target.hex
+teensy41_build_flash target.hex
+```
+
+Direct flashing from inside the container requires host USB device access. On
+Linux, install PJRC's Teensy udev rules on the host. On macOS with Docker
+Desktop, expect to build the `.hex` in the container and flash from the host
+with PJRC Teensy Loader if USB passthrough is unavailable.
+
+### Cargo cache ownership
+
+The Rust image keeps the pinned compiler and image-provided cargo tools under
+`/opt`, but the runtime entrypoint sets `CARGO_HOME` to `${HOME}/.cargo` for the
+adapted user. This is intentional: crates.io registry downloads, git checkouts,
+and user-installed cargo tools are mutable development state and should not be
+written to the image-owned `/opt/cargo` directory.
+
+See `rust/EMBEDDED.md` and `rust/examples/teensy41_blink/README.md` for the
+full target matrix, example workflow, troubleshooting notes, and guidance for
+adding future boards.
+
 Go does not include embedded support.
 
 ---

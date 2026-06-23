@@ -3,7 +3,8 @@
 [![Build](https://github.com/abitofhelp/dev_containers/actions/workflows/docker-build.yml/badge.svg)](https://github.com/abitofhelp/dev_containers/actions/workflows/docker-build.yml) [![Publish](https://github.com/abitofhelp/dev_containers/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/abitofhelp/dev_containers/actions/workflows/docker-publish.yml) [![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD--3--Clause-blue.svg)](LICENSE)
 
 Professional development containers for Ada, C++, Go, and Rust — with
-embedded (ARM Cortex-M/A) support for Ada, C++, and Rust.
+embedded (ARM Cortex-M/A) support for Ada, C++, and Rust, including
+Teensy 4.1 bare-metal Rust support.
 
 ## Available Images
 
@@ -14,7 +15,7 @@ embedded (ARM Cortex-M/A) support for Ada, C++, and Rust.
 | `dev-container-cpp` | C++ (Clang 20, CMake, vcpkg) | Ubuntu 24.04 | amd64, arm64 | Cortex-M/A |
 | `dev-container-cpp-system` | C++ (GCC 13, Clang 18, apt) | Ubuntu 24.04 | amd64, arm64 | Cortex-M/A |
 | `dev-container-go` | Go 1.26.1, protobuf, Bazelisk | Ubuntu 24.04 | amd64, arm64 | — |
-| `dev-container-rust` | Rust stable (rustup) | Ubuntu 24.04 | amd64, arm64 | Cortex-M/A |
+| `dev-container-rust` | Rust stable (rustup) | Ubuntu 24.04 | amd64, arm64 | Cortex-M/A, Teensy 4.1 |
 
 All images are published to GitHub Container Registry:
 
@@ -107,6 +108,54 @@ and container environments, or debugging UID/mount issues.
 | **Documentation** | typst (formal document compiler) |
 
 See each image's Dockerfile for the full list of language-specific tools.
+
+### Rust Embedded / Teensy 4.1 Support
+
+The Rust image supports both generic embedded Rust targets and a concrete
+PJRC Teensy 4.1 workflow. Teensy 4.1 uses the NXP i.MX RT1062 Cortex-M7, so
+Rust projects target `thumbv7em-none-eabihf` and produce Intel HEX files for
+PJRC's loader.
+
+| Target | Typical hardware | Runtime shape | Primary output |
+|--------|------------------|---------------|----------------|
+| `thumbv6m-none-eabi` | Cortex-M0/M0+ | `no_std` bare metal | ELF / BIN / HEX |
+| `thumbv7m-none-eabi` | Cortex-M3 | `no_std` bare metal | ELF / BIN / HEX |
+| `thumbv7em-none-eabi` | Cortex-M4/M7, soft-float ABI | `no_std` bare metal | ELF / BIN / HEX |
+| `thumbv7em-none-eabihf` | Cortex-M4F/M7F, including Teensy 4.1 | `no_std` bare metal | ELF / Intel HEX |
+| `thumbv8m.main-none-eabihf` | Cortex-M33-class MCUs | `no_std` bare metal | ELF / BIN / HEX |
+| `armv7-unknown-linux-gnueabihf` | ARMv7 Linux SBCs / MPU targets | Linux userspace | Linux executable |
+
+The Teensy 4.1 path includes:
+
+- `cargo-binutils` / `cargo objcopy` for Intel HEX generation.
+- `teensy_loader_cli` for PJRC command-line flashing.
+- `cargo-generate` plus shell helpers for the upstream `teensy4-rs-template`.
+- A smoke example at `rust/examples/teensy41_blink`.
+- Detailed notes in [`rust/EMBEDDED.md`](rust/EMBEDDED.md).
+
+Cargo cache behavior: the Rust image stores the pinned toolchain and
+preinstalled cargo tools under `/opt`, while runtime Cargo cache and user cargo
+installs use `${HOME}/.cargo`. This keeps the image reproducible and avoids
+permission problems when building bind-mounted projects as the adapted host
+user.
+
+Inside the Rust container:
+
+```bash
+cd rust/examples/teensy41_blink
+cargo objcopy --release -- -O ihex teensy41_blink.hex
+```
+
+Flash from a Linux host/container with USB access:
+
+```bash
+teensy_loader_cli --mcu=TEENSY41 -w -v teensy41_blink.hex
+```
+
+The container can always build the `.hex`. Direct flashing also requires host
+USB access. On Linux, install PJRC's Teensy udev rules on the host. On macOS
+with Docker Desktop, build in the container and flash from the macOS host with
+the PJRC graphical Teensy Loader or a host-installed `teensy_loader_cli`.
 
 ## Reproducibility Policy
 
@@ -271,6 +320,19 @@ make -f ada/Makefile test           # Smoke test
 make -f ada/Makefile inspect        # Show configured variables
 make -f ada/Makefile help           # Full target list
 ```
+
+For hosts that should explicitly use Docker Desktop, such as macOS, use the
+Docker convenience aliases from the repository root:
+
+```bash
+make -f rust/Makefile docker-build
+make -f rust/Makefile test-docker
+make -f rust/Makefile test-teensy41-docker
+```
+
+The Docker and Podman aliases stay in the same Makefile invocation as the
+language wrapper, so they preserve the `-f <lang>/Makefile` context and the
+shared repo-root build context.
 
 ## Shared Python Launcher
 

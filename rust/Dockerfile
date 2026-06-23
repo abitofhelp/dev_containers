@@ -15,10 +15,12 @@
 # This Dockerfile uses Ubuntu 24.04 as the base image and adds:
 #   - Rust stable toolchain via rustup (rustc, cargo, rustfmt, clippy,
 #     rust-analyzer, llvm-tools-preview)
-#   - Embedded bare-metal targets (5 thumbv7/v6/v8m targets)
+#   - Embedded bare-metal targets (including Teensy 4.1 / Cortex-M7)
 #   - ARM Cortex-A Linux cross-compilation target
 #   - cargo-binstall for fast binary installs
 #   - probe-rs for embedded flashing and debugging
+#   - cargo-binutils for cargo objcopy / .hex generation
+#   - teensy_loader_cli for PJRC Teensy programming
 #   - cargo-generate, cargo-expand, sccache
 #   - mold fast linker
 #
@@ -31,7 +33,8 @@
 # -------
 # Reproducible development environment for:
 #   - Desktop Rust development (stable toolchain)
-#   - Embedded Rust development (ARM Cortex-M bare-metal, ARM Cortex-A Linux)
+#   - Embedded Rust development (ARM Cortex-M bare-metal, ARM Cortex-A Linux,
+#     and Teensy 4.1 / NXP i.MX RT1062 Cortex-M7)
 #   - Build tools: cargo, mold linker, sccache (opt-in)
 #   - Static analysis: clippy, rustfmt
 #   - Python 3 + venv
@@ -84,6 +87,7 @@ FROM ubuntu:24.04@sha256:d1e2e92c075e5ca139d51a140fff46f84315c0fdce203eab2807c7e
 ARG CARGO_BINSTALL_SHA256_AMD64=cf2a4b54494ea8555d6349685e9a301efc1051d9fba6308c76914b2486f8700f
 ARG CARGO_BINSTALL_SHA256_ARM64=c55962a0115f9716b709216de7f8bdd59d6ba8738779e60b051b4593f677717a
 ARG CARGO_BINSTALL_VERSION=1.18.1
+ARG CARGO_BINUTILS_VERSION=0.4.0
 ARG CARGO_EXPAND_VERSION=1.0.121
 ARG CARGO_GENERATE_VERSION=0.23.8
 ARG DEBIAN_FRONTEND=noninteractive
@@ -101,6 +105,9 @@ ARG USER_UID=1000
 # ----------------------------------------------------------------------------
 # Environment variables (alphabetized)
 # ----------------------------------------------------------------------------
+# Build-time Cargo home. The runtime entrypoint overrides CARGO_HOME to
+# ${HOME}/.cargo so registries, git checkouts, and user-installed cargo tools
+# are writable by the adapted runtime user.
 ENV CARGO_HOME=/opt/cargo \
     HOME=/home/${USERNAME} \
     LANG=en_US.UTF-8 \
@@ -136,9 +143,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc-arm-linux-gnueabihf \
     libc6-dev-armhf-cross \
     # ------------------------------------------------------------------
-    # Embedded: hardware debug tools
+    # Embedded: hardware debug and board programming tools
     # ------------------------------------------------------------------
     gdb-multiarch \
+    teensy-loader-cli \
     # ------------------------------------------------------------------
     # Fast linker
     # ------------------------------------------------------------------
@@ -198,6 +206,9 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
 
 # ----------------------------------------------------------------------------
 # Embedded targets (installed via rustup)
+#
+# thumbv7em-none-eabihf is the Rust target used by Teensy 4.1's
+# NXP i.MX RT1062 ARM Cortex-M7 with hardware floating point.
 # ----------------------------------------------------------------------------
 RUN rustup target add \
     thumbv6m-none-eabi \
@@ -231,6 +242,7 @@ RUN ARCH=$(dpkg --print-architecture) \
 # ----------------------------------------------------------------------------
 RUN cargo binstall -y --no-symlinks \
     "probe-rs-tools@${PROBE_RS_TOOLS_VERSION}" \
+    "cargo-binutils@${CARGO_BINUTILS_VERSION}" \
     "cargo-generate@${CARGO_GENERATE_VERSION}" \
     "cargo-expand@${CARGO_EXPAND_VERSION}" \
     "sccache@${SCCACHE_VERSION}" \
@@ -287,6 +299,7 @@ RUN echo "" \
  && rustfmt --version \
  && cargo clippy --version \
  && rust-analyzer --version \
+ && cargo objcopy --version \
  && echo "" \
  && echo "=== Embedded targets ===" \
  && rustup target list --installed \
@@ -300,7 +313,17 @@ RUN echo "" \
  && echo "=== System tools ===" \
  && mold --version \
  && arm-linux-gnueabihf-gcc --version | head -1 \
- && gdb-multiarch --version | head -1
+ && gdb-multiarch --version | head -1 \
+ && echo "" \
+ && echo "=== Teensy loader support ===" \
+ && { teensy_loader_cli --list-mcus > /tmp/teensy_mcus.txt 2>&1; status=$?; \
+      if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then \
+          cat /tmp/teensy_mcus.txt >&2; exit "$status"; \
+      fi; } \
+ && { grep -Fxq ' - TEENSY41' /tmp/teensy_mcus.txt || \
+      { echo "TEENSY41 not found in teensy_loader_cli --list-mcus output" >&2; \
+        cat /tmp/teensy_mcus.txt >&2; exit 1; }; } \
+ && rm -f /tmp/teensy_mcus.txt
 
 # ----------------------------------------------------------------------------
 # Install entrypoint and set runtime defaults

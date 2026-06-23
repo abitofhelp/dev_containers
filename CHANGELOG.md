@@ -12,6 +12,45 @@ go 1.1.0, rust 1.0.2) are retired.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-06-22
+
+Adds Rust embedded development support for the PJRC Teensy 4.1 board
+(NXP i.MX RT1062 ARM Cortex-M7), along with shared infrastructure fixes for
+the Docker/Podman Makefile aliases and the Rust runtime Cargo cache. This is a
+Rust-only feature addition; the Ada, C++, and Go images are unchanged.
+
+### Added
+
+- Rust image: add Teensy 4.1 / NXP i.MX RT1062 Cortex-M7 bare-metal support
+  path with `cargo-binutils` (`cargo objcopy`) and `teensy_loader_cli`.
+- Rust image: add `rust/examples/teensy41_blink`, a `no_std` RTIC blink and
+  USB-logging example targeting `thumbv7em-none-eabihf` and `board::t41`.
+- Rust Makefile: add `test-teensy41`, `test-teensy41-docker`, and
+  `test-teensy41-podman` smoke-test targets that build a Teensy 4.1 `.hex`.
+- Rust Makefile: add `clean-teensy41` for generated embedded build outputs.
+- Rust shell: add `teensy41_template`, `teensy41_hex`, `teensy41_flash`, and
+  `teensy41_build_flash` helper functions.
+- Rust docs: add `rust/EMBEDDED.md` with the embedded target matrix,
+  Teensy 4.1 build/flash split, host USB caveats, troubleshooting, and guidance
+  for adding future board-specific workflows.
+
+### Fixed
+
+- Fixed Rust container runtime Cargo cache ownership: the entrypoint now uses `${HOME}/.cargo` for mutable registry/git/user install state while preserving `/opt/cargo/bin` for image-provided tools.
+- Fixed Rust image and smoke-test Teensy loader verification to account for
+  `teensy_loader_cli --list-mcus` printing supported MCUs and then exiting with
+  a non-zero status. The checks now validate `TEENSY41` support without
+  treating that documented loader behavior as a build failure, including inside
+  `set -e` smoke-test scripts.
+- Fixed Docker and Podman convenience aliases in `Makefile.common` so commands
+  such as `make -f rust/Makefile docker-build` preserve the selected language
+  Makefile context on macOS and other hosts.
+
+### Documentation
+
+- Clarified the canonical repository-root Makefile commands for Docker Desktop
+  builds and Rust Teensy 4.1 smoke testing.
+
 ## [1.0.1] - 2026-04-17
 
 Cosmetic cleanup following deletion of the archived pre-monorepo
