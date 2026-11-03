@@ -10,12 +10,14 @@ Teensy 4.1 bare-metal Rust support.
 
 | Image | Language | Base | Architectures | Embedded |
 |-------|----------|------|---------------|----------|
-| `dev-container-ada` | Ada (Alire-managed GNAT) | Ubuntu 22.04 | amd64 | Cortex-M/A |
-| `dev-container-ada-system` | Ada (APT `gnat-13`) | Ubuntu 24.04 | amd64, arm64 | Cortex-M/A |
+| `dev-container-ada` | Ada (Alire: GNAT 16.1, GNATprove 16.1, GPRbuild 26.0.1; libpq 18) | Ubuntu 26.04 | amd64, arm64 | Cortex-M/A |
 | `dev-container-cpp` | C++ (Clang 20, CMake, vcpkg) | Ubuntu 24.04 | amd64, arm64 | Cortex-M/A |
 | `dev-container-cpp-system` | C++ (GCC 13, Clang 18, apt) | Ubuntu 24.04 | amd64, arm64 | Cortex-M/A |
 | `dev-container-go` | Go 1.26.1, protobuf, Bazelisk | Ubuntu 24.04 | amd64, arm64 | — |
 | `dev-container-rust` | Rust stable (rustup) | Ubuntu 24.04 | amd64, arm64 | Cortex-M/A, Teensy 4.1 |
+
+`dev-container-ada-system` is **deprecated** (see
+[Deprecated Images](#deprecated-images)).
 
 All images are published to GitHub Container Registry:
 
@@ -26,7 +28,7 @@ ghcr.io/abitofhelp/<image-name>:v<X.Y.Z>
 
 ### Versioning
 
-All six images share a single repository version. A `vX.Y.Z` tag on this
+All current images share a single repository version. A `vX.Y.Z` tag on this
 repo produces the matching `ghcr.io/abitofhelp/<image>:vX.Y.Z` for every
 image in the same release. The `:latest` tag always points to the most
 recent non-pre-release version. See [CHANGELOG.md](CHANGELOG.md) for the
@@ -38,18 +40,18 @@ current release and history.
 
 ```bash
 # From your project directory:
-make -f ~/containers/dev_containers/ada/Makefile pull-system
+make -f ~/containers/dev_containers/ada/Makefile pull
 ```
 
 ### 2. Launch a container
 
 ```bash
 cd ~/Ada/github.com/abitofhelp/my_project
-make -f ~/containers/dev_containers/ada/Makefile run-system
+make -f ~/containers/dev_containers/ada/Makefile run
 ```
 
 The Makefile auto-detects the container CLI (docker on macOS/Windows, nerdctl
-on Linux), generates a sequential container name (`dev-container-ada-system-1`,
+on Linux), generates a sequential container name (`dev-container-ada-1`,
 `-2`, etc.), passes host identity for runtime user adaptation, and mounts your
 current directory at `/workspace`.
 
@@ -58,7 +60,7 @@ current directory at `/workspace`.
 If your `.zshrc` has the convenience functions configured:
 
 ```bash
-adast    # Ada system image — cd's to source root, launches container
+adat     # Ada image — cd's to source root, launches container
 cppt     # C++ upstream image
 got      # Go image
 rustt    # Rust image
@@ -66,8 +68,8 @@ rustt    # Rust image
 
 | Command | Image | amd64 (x86_64) | arm64 |
 |---------|-------|:---:|:---:|
-| `adat` | dev-container-ada (Alire) | yes | no |
-| `adast` | dev-container-ada-system (APT) | yes | yes |
+| `adat` | dev-container-ada (Alire) | yes | yes |
+| `adast` | dev-container-ada-system (**deprecated**; use `adat`) | yes | yes |
 | `cppt` | dev-container-cpp | yes | yes |
 | `cppst` | dev-container-cpp-system (APT) | yes | yes |
 | `got` | dev-container-go | yes | yes |
@@ -171,17 +173,31 @@ Pin at the most specific level available:
   `cargo install --version X.Y.Z`, `rustup toolchain install 1.85.1`).
 - **Git clones** — check out a tagged release, not a moving branch.
 - **APT packages** — use versioned package names where available
-  (`gnat-13`, `clang-20`); Ubuntu's archive rotates exact versions, so
-  exact-version apt pinning is discouraged.
+  (`postgresql-client-18`, `clang-20`); Ubuntu's archive rotates exact
+  versions, so exact-version apt pinning is discouraged. The Ada image
+  records its exact package list in
+  `/usr/share/doc/dev-containers/packages-<arch>.txt`.
 
 Avoid `@latest`, `stable`, `HEAD`, `main`, and unverified downloads. If
 you add a tool, add a `TOOLNAME_VERSION` (and `TOOLNAME_SHA256` where the
 tool ships a binary release) to the `ARG` block at the top of the
 Dockerfile.
 
-The Ada images are the current reference for this policy: the Ubuntu base
-image, Alire, GNAT, and GPRBuild are all version-pinned with SHA256
-verification where applicable.
+The Ada image is the current reference for this policy: the Ubuntu base
+image, Alire, GNAT, GPRbuild, GNATprove, Typst, and the Alire index are all
+pinned, with SHA256 verification where applicable.
+
+## Deprecated Images
+
+| Image | Status | Use instead | Why |
+|-------|--------|-------------|-----|
+| `dev-container-ada-system` | Deprecated in the release after v1.1.0. No new versions are published. | `dev-container-ada` | It was a workaround: Alire had no arm64 Linux GNAT, so Apple Silicon users needed Ubuntu's `gnat-13`. Alire now ships GNAT for arm64, and `dev-container-ada` supports amd64 and arm64. |
+
+Existing `dev-container-ada-system` tags (including `v1.1.0` and
+`system-gnat-13`) remain on GHCR for anyone who needs the old environment.
+`ada/Dockerfile.system` and the `*-system` Makefile targets stay in the
+repository, unchanged, until consumers have moved; they will be removed in a
+later release.
 
 ## How It Works
 
@@ -285,11 +301,13 @@ dev_containers/
 ├── USER_GUIDE.md
 ├── CHANGELOG.md
 ├── ada/
-│   ├── Dockerfile           ← Alire-managed toolchain (Ubuntu 22.04)
-│   ├── Dockerfile.system    ← system toolchain (Ubuntu 24.04)
+│   ├── Dockerfile           ← Alire-managed toolchain (Ubuntu 26.04)
+│   ├── Dockerfile.system    ← DEPRECATED system toolchain (Ubuntu 24.04)
 │   ├── Makefile             ← thin: sets vars, includes Makefile.common
+│   ├── dev-doctor.sh        ← prints every tool version (dev-doctor)
 │   ├── .zshrc               ← Ada-specific shell config
-│   └── examples/hello_ada/
+│   ├── examples/hello_ada/
+│   └── tests/               ← acceptance tests and fixtures
 ├── cpp/
 │   ├── Dockerfile           ← upstream Clang 20, CMake, vcpkg
 │   ├── Dockerfile.system    ← system GCC 13, Clang 18
@@ -315,8 +333,9 @@ Run `make -f <lang>/Makefile help` for the full list.  Common targets:
 ```bash
 make -f ada/Makefile build          # Build the image
 make -f ada/Makefile run            # Launch container (auto-detects CLI)
-make -f ada/Makefile run-system     # Launch system-toolchain variant
-make -f ada/Makefile test           # Smoke test
+make -f ada/Makefile test           # Acceptance tests (A1-A8)
+make -f ada/Makefile test-offline   # Offline build test (A10)
+make -f ada/Makefile doctor         # Print every tool version
 make -f ada/Makefile inspect        # Show configured variables
 make -f ada/Makefile help           # Full target list
 ```

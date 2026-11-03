@@ -20,13 +20,26 @@
 
 | Image | Base | Compiler | Architectures |
 |-------|------|----------|---------------|
-| `dev-container-ada` | Ubuntu 22.04 | Alire-managed GNAT + GPRBuild | amd64 |
-| `dev-container-ada-system` | Ubuntu 24.04 | Ubuntu `gnat-13` + `gprbuild` | amd64, arm64 |
+| `dev-container-ada` | Ubuntu 26.04 | Alire: GNAT 16.1.0, GPRbuild 26.0.1, GNATprove 16.1.0 | amd64, arm64 |
 
-Start with the default (`dev-container-ada`).  Alire's downloadable Linux
-GNAT toolchains are built on Ubuntu 22.04.  If you prefer system packages
-and only need native compilation, use `dev-container-ada-system`.  Apple
-Silicon users should use the system image for native arm64 performance.
+`dev-container-ada` is the single Ada image, on both amd64 and arm64
+(including Apple Silicon). It also provides libpq 18 (`libpq-dev`) and
+`psql` for PostgreSQL client development, Typst for formal documents, and
+the embedded tools listed in section 6.
+
+- The toolchain lives under `/opt/alire` (Alire's settings, cache,
+  toolchains, and install prefix), so it does not depend on `HOME`.
+- The Alire index is pinned to the commit recorded in
+  `/usr/share/doc/dev-containers/alire-index-commit.txt` and does not
+  refresh automatically. Run `alr index --update-all` when you want newer
+  crates.
+- Run `dev-doctor` inside the container (or `make -f ada/Makefile doctor`)
+  to print every tool version.
+
+**Deprecated:** `dev-container-ada-system` (Ubuntu 24.04, `gnat-13`) was the
+arm64 workaround from before Alire shipped an arm64 GNAT. No new versions
+are published; its existing GHCR tags remain available. Use
+`dev-container-ada` instead.
 
 ### 0.2 C++
 
@@ -207,7 +220,7 @@ Each language has a thin Makefile that sets variables and includes
 ```makefile
 LANG_DIR     := ada
 IMAGE_NAME   := dev-container-ada
-BUILD_ARGS   := --build-arg GNAT_VERSION=15.2.1
+BUILD_ARGS   := --build-arg GNAT_VERSION=16.1.0
 include ../Makefile.common
 ```
 
@@ -263,7 +276,7 @@ For Ada projects with relative Alire pins:
 
 ```bash
 cd ~/Ada/github.com/abitofhelp
-make -f ~/containers/dev_containers/ada/Makefile run-system
+make -f ~/containers/dev_containers/ada/Makefile run
 ```
 
 This mounts the entire `abitofhelp` directory so that `../functional` and
@@ -380,16 +393,19 @@ any additional host-level access.
 Each Dockerfile pins the base image by SHA256 digest.  To upgrade:
 
 ```bash
-docker pull ubuntu:24.04
-docker image inspect ubuntu:24.04 | grep -A1 RepoDigests
-# Update the FROM line in the relevant Dockerfile.
+docker buildx imagetools inspect ubuntu:26.04   # Ada image
+docker buildx imagetools inspect ubuntu:24.04   # other images
+# Update the FROM line in the relevant Dockerfile (use the index digest,
+# so that one digest covers amd64 and arm64).
 ```
 
 ### Language toolchains
 
-- **Ada (Alire)**: Update `GNAT_VERSION` and `GPRBUILD_VERSION` in
-  `ada/Makefile` and the CI workflow.
-- **Ada (system)**: Wait for Ubuntu to ship a newer `gnat-*` package.
+- **Ada (Alire)**: Update `GNAT_VERSION`, `GNATPROVE_VERSION`, and
+  `GPRBUILD_VERSION` in `ada/Dockerfile`, `ada/Makefile`, and
+  `.github/workflows/docker-publish.yml`. To pick up newer crates, also
+  update `ALIRE_INDEX_COMMIT` in `ada/Dockerfile`.
+- **Ada (system)**: Deprecated; not updated.
 - **C++ (upstream)**: Update LLVM/CMake repo keys and versions in
   `cpp/Dockerfile`.
 - **C++ (system)**: Tied to Ubuntu's package versions.
@@ -399,7 +415,35 @@ docker image inspect ubuntu:24.04 | grep -A1 RepoDigests
 ### Alire
 
 Check [github.com/alire-project/alire/releases](https://github.com/alire-project/alire/releases).
-Update `ALIRE_VERSION` and SHA256 checksums in the Ada Dockerfiles.
+Update `ALIRE_VERSION` and both SHA256 checksums (amd64 and arm64) in
+`ada/Dockerfile`.
+
+### Ada image refresh procedure
+
+APT packages in the Ada image come from the live Ubuntu 26.04 archive,
+without `apt-get upgrade`, and each image records its exact package list in
+`/usr/share/doc/dev-containers/packages-<arch>.txt`. CI also saves the list
+as a build artifact. Refresh the image monthly, or sooner when an Ubuntu
+security notice affects a package in the image:
+
+1. On a branch, update the `ubuntu:26.04` digest (see above).
+2. Rebuild on both architectures. Compare the new package lists with the
+   previous release's, and summarize the security-relevant changes in the
+   pull request.
+3. Run the acceptance tests on both architectures: `make -f ada/Makefile
+   test` (A1–A8), `make -f ada/Makefile test-offline` (A10), and the
+   consumer regression matrix (A11).
+4. Merge, then publish through the normal release process. Record the
+   digest currently behind `latest` first, so that the change can be rolled
+   back.
+
+**Why there are no APT snapshots (yet):** Ubuntu's snapshot service
+(`snapshot.ubuntu.com`) does not serve the `ubuntu-ports` archive, which
+holds arm64 packages, so arm64 cannot be pinned to a dated snapshot. To keep
+both architectures consistent, neither uses snapshots. **Planned design:**
+once the snapshot service supports ports, add an `APT::Snapshot` date to
+both architectures in one change. Step 1 above then also advances the
+snapshot date.
 
 ---
 

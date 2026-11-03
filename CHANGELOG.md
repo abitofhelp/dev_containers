@@ -12,6 +12,59 @@ go 1.1.0, rust 1.0.2) are retired.
 
 ## [Unreleased]
 
+Modernizes the Ada image and makes it the single Ada image for amd64 and
+arm64 (#3). The C++, Go, and Rust images are unchanged.
+
+### Changed
+
+- Ada image: move to Ubuntu 26.04 LTS (pinned by multi-architecture digest).
+- Ada image: Alire 2.1.1, GNAT (`gnat_native`) 16.1.0, and GPRbuild 26.0.1,
+  installed at build time under `/opt/alire` (settings, cache, toolchains,
+  and install prefix), so that the toolchain no longer depends on `HOME` and
+  can no longer change at run time.
+- Ada image: build and publish for **linux/amd64 and linux/arm64**. Alire,
+  Typst, and their SHA-256 checksums are selected per architecture.
+- Ada image: pin the Alire community index to a recorded commit, with
+  automatic index refresh disabled. Run `alr index --update-all` to fetch
+  newer crates deliberately.
+- Ada image: Python tools live in a virtual environment at `/opt/venv`
+  (PEP 668); pytest 9.2.0.
+- Ada image: Typst 0.15.1.
+- Ada CI: build and test natively on amd64 and arm64 GitHub runners (no
+  QEMU), and save each architecture's package list and tool versions as
+  build artifacts.
+- Ada Makefile: `make test` now runs the acceptance tests (A1–A8).
+
+### Added
+
+- Ada image: GNATprove 16.1.0 (installed with `alr install`).
+- Ada image: PostgreSQL client development from Ubuntu 26.04: `libpq-dev`
+  18.6 and `postgresql-client-18`.
+- Ada image: `dev-doctor`, which prints every tool version, and the
+  `make -f ada/Makefile doctor` target.
+- Ada image: the exact APT package list for each architecture, at
+  `/usr/share/doc/dev-containers/packages-<arch>.txt`.
+- Ada acceptance tests (`ada/tests/`):
+  - tool versions and `PATH` resolution;
+  - `hello_ada`;
+  - GNATprove positive and negative proofs, with `--checks-as-errors=on`;
+  - the libpq version, its required symbols, and an Ada program that links
+    with `-lpq`;
+  - an offline build from prefetched dependencies
+    (`make -f ada/Makefile test-offline`).
+- USER_GUIDE: the Ada image refresh procedure, and the planned design for
+  APT snapshots. Ubuntu's snapshot service does not yet serve arm64.
+
+### Deprecated
+
+- `dev-container-ada-system` (Ubuntu 24.04, `gnat-13`). It was the arm64
+  workaround from before Alire shipped an arm64 GNAT; use
+  `dev-container-ada` instead.
+  - New versions are no longer built or published.
+  - Existing GHCR tags remain available.
+  - `ada/Dockerfile.system` and the `*-system` Makefile targets remain,
+    unchanged, until consumers have moved.
+
 ## [1.1.0] - 2026-06-22
 
 Adds Rust embedded development support for the PJRC Teensy 4.1 board

@@ -1,0 +1,8 @@
+with "config/offline_deps_config.gpr";
+project Offline_Deps is
+   for Source_Dirs use ("src/", "config/");
+   for Object_Dir use "obj/" & Offline_Deps_Config.Build_Profile;
+   for Create_Missing_Dirs use "True";
+   for Exec_Dir use "bin";
+   for Main use ("offline_deps.adb");
+end Offline_Deps;

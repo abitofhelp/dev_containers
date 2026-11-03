@@ -23,13 +23,16 @@ PROJECT_NAME      ?= dev_containers
 # ----------------------------------------------------------------------------
 # Toolchain versions (build-time)
 # ----------------------------------------------------------------------------
-GNAT_VERSION     ?= 15.2.1
-GPRBUILD_VERSION ?= 25.0.1
+GNAT_VERSION      ?= 16.1.0
+GNATPROVE_VERSION ?= 16.1.0
+GPRBUILD_VERSION  ?= 26.0.1
 
 # ----------------------------------------------------------------------------
 # Build arguments passed to docker build
 # ----------------------------------------------------------------------------
-BUILD_ARGS := --build-arg GNAT_VERSION=$(GNAT_VERSION) --build-arg GPRBUILD_VERSION=$(GPRBUILD_VERSION)
+BUILD_ARGS := --build-arg GNAT_VERSION=$(GNAT_VERSION) \
+              --build-arg GNATPROVE_VERSION=$(GNATPROVE_VERSION) \
+              --build-arg GPRBUILD_VERSION=$(GPRBUILD_VERSION)
 
 # ----------------------------------------------------------------------------
 # Include shared targets
@@ -42,14 +45,16 @@ include $(_THIS_DIR)/../Makefile.common
 # ----------------------------------------------------------------------------
 .PHONY: help
 help:
-	@echo "Alire-managed image (Dockerfile, amd64 only):"
+	@echo "Ada image (Dockerfile, Alire-managed, amd64 + arm64):"
 	@echo "  pull                 Pull the default image from GHCR"
 	@echo "  build                Build the default image"
 	@echo "  build-no-cache       Build the default image without cache"
 	@echo "  run                  Run the default image interactively"
 	@echo "  run-root             Run as root, bypassing the entrypoint (diagnostic)"
 	@echo "  run-shell            Open zsh in the user home directory"
-	@echo "  test                 Smoke test (nerdctl rootless)"
+	@echo "  test                 Acceptance tests A1-A8 (nerdctl rootless)"
+	@echo "  test-offline         Acceptance test A10: offline build from prefetched deps"
+	@echo "  doctor               Print every tool version in the image"
 	@echo "  test-docker          Smoke test (docker rootful)"
 	@echo "  test-podman          Smoke test (podman rootless)"
 	@echo "  save                 Save the image to dist/"
@@ -57,7 +62,7 @@ help:
 	@echo "  tag-gnat             Tag local image with GNAT version"
 	@echo "  tag-latest           Tag local image as latest"
 	@echo ""
-	@echo "System-toolchain image (Dockerfile.system, amd64 + arm64):"
+	@echo "DEPRECATED system-toolchain image (Dockerfile.system); use the Ada image above:"
 	@echo "  pull-system          Pull the system image from GHCR"
 	@echo "  build-system         Build the system-toolchain image"
 	@echo "  build-system-no-cache Build the system-toolchain image without cache"
@@ -99,8 +104,9 @@ help:
 	@echo "  HOST_USER            Host username (default: $$(whoami))"
 	@echo "  HOST_UID             Host user ID (default: $$(id -u))"
 	@echo "  HOST_GID             Host group ID (default: $$(id -g))"
-	@echo "  GNAT_VERSION         GNAT version for Alire build (default: 15.2.1)"
-	@echo "  GPRBUILD_VERSION     GPRBuild version for Alire build (default: 25.0.1)"
+	@echo "  GNAT_VERSION         GNAT version for Alire build (default: 16.1.0)"
+	@echo "  GNATPROVE_VERSION    GNATprove version for Alire build (default: 16.1.0)"
+	@echo "  GPRBUILD_VERSION     GPRbuild version for Alire build (default: 26.0.1)"
 
 # ----------------------------------------------------------------------------
 # Test scripts
@@ -114,14 +120,7 @@ echo "USER=$$(whoami) UID=$$(id -u) GID=$$(id -g) HOME=$$HOME"
 echo "DISPLAY_USER=$$DISPLAY_USER"
 echo "CONTAINER_RUNTIME=$$CONTAINER_RUNTIME"
 echo ""
-echo "=== Build + run test ==="
-alr run
-echo ""
-echo "=== Toolchain versions ==="
-alr exec -- gnat --version | head -1
-alr exec -- gprbuild --version | head -1
-alr --version | head -1
-echo "=== Test passed ==="
+bash /workspace/tests/acceptance.sh
 endef
 export TEST_SCRIPT
 
@@ -178,3 +177,27 @@ show-tags-system:
 .PHONY: tag-system
 tag-system:
 	$(CONTAINER_CLI) tag $(SYSTEM_IMAGE_NAME) $(SYSTEM_IMAGE_REF):system-gnat-13
+
+# ----------------------------------------------------------------------------
+# Diagnostics and the offline acceptance test (Ada image)
+# ----------------------------------------------------------------------------
+.PHONY: doctor
+doctor:
+	$(CONTAINER_CLI) run --rm $(IMAGE_NAME) dev-doctor
+
+# A10: phase 1 prefetches the fixture's dependencies with network access
+# (sandboxed in the fixture copy); phase 2 builds it with no network and
+# checks that the compiler version did not change.
+.PHONY: test-offline
+test-offline:
+	@set -e; work="$$(mktemp -d)"; trap 'rm -rf "$$work"' EXIT; \
+	cp -R "$(REPO_ROOT)$(LANG_DIR)/tests/offline_deps/." "$$work/"; \
+	echo "=== A10 phase 1: prefetch dependencies (online) ==="; \
+	$(CONTAINER_CLI) run --rm -e HOST_UID=$(HOST_UID) -e HOST_GID=$(HOST_GID) -e HOST_USER=$(HOST_USER) \
+		-v "$$work":/workspace -w /workspace $(IMAGE_NAME) \
+		bash -c 'alr -n settings --set dependencies.shared false && alr -n update'; \
+	echo "=== A10 phase 2: build with --network none ==="; \
+	$(CONTAINER_CLI) run --rm --network none -e HOST_UID=$(HOST_UID) -e HOST_GID=$(HOST_GID) -e HOST_USER=$(HOST_USER) \
+		-v "$$work":/workspace -w /workspace $(IMAGE_NAME) \
+		bash -c 'alr -n build && ./bin/offline_deps && gnat --version | head -1 | grep -q "GNAT $(GNAT_VERSION)"'; \
+	echo "=== A10 passed ==="

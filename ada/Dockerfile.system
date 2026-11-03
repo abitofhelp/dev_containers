@@ -1,6 +1,12 @@
 # syntax=docker/dockerfile:1.7
 # ============================================================================
-# Dockerfile.system — Ubuntu system toolchain (alternate)
+# Dockerfile.system — Ubuntu system toolchain (DEPRECATED)
+# ============================================================================
+# DEPRECATED: dev-container-ada-system was the arm64 workaround from before
+# Alire shipped an arm64 Linux GNAT. Use ada/Dockerfile (dev-container-ada),
+# which now supports linux/amd64 and linux/arm64. New versions of this image
+# are no longer published; existing GHCR tags remain available. This file is
+# kept, unchanged otherwise, until consumers have moved.
 # ============================================================================
 # Copyright (c) 2025 Michael Gardner, A Bit of Help, Inc.
 # SPDX-License-Identifier: BSD-3-Clause

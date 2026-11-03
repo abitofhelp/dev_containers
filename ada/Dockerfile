@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # ============================================================================
-# Dockerfile — Alire-managed toolchain (default)
+# Dockerfile — Alire-managed toolchain (the Ada image)
 # ============================================================================
 # Copyright (c) 2025 Michael Gardner, A Bit of Help, Inc.
 # SPDX-License-Identifier: BSD-3-Clause
@@ -12,58 +12,45 @@
 # Repository: dev_containers
 # Docker Image: ghcr.io/abitofhelp/dev-container-ada
 #
-# This Dockerfile uses Ubuntu 22.04 as the base image and installs GNAT
-# and GPRBuild via Alire's toolchain management. Alire's downloadable
-# Linux GNAT toolchains are built on Ubuntu 22.04, making this the most
-# conservative pairing.
+# This is the single Ada image for linux/amd64 and linux/arm64. It uses
+# Ubuntu 26.04 LTS and installs GNAT, GPRbuild, and GNATprove through
+# Alire at build time, at fixed versions, under /opt/alire.
 #
-# Recommended for:
-#   • New Ada developers (Alire manages the full toolchain)
-#   • Cross-target and embedded development (Alire distributes cross compilers)
-#   • Projects that need specific GNAT/GPRBuild version combinations
-#
-# For an alternative using Ubuntu 24.04 with system-packaged compilers,
-# see Dockerfile.system.
+# The older system-toolchain image (Dockerfile.system,
+# dev-container-ada-system) is deprecated. It existed only because Alire
+# had no arm64 Linux GNAT; Alire now ships one, so use this image instead.
 #
 # Purpose
 # -------
 # Reproducible development environment for:
-#   • Ada development using Alire
-#   • GNAT compiler toolchain (Alire-managed)
-#   • GPRBuild build system (Alire-managed)
+#   • Ada 2022 development using Alire
+#   • GNAT native compiler, GPRbuild, and GNATprove (SPARK)
+#   • PostgreSQL client development (libpq 18, psql)
 #   • Embedded development (ARM Cortex-M bare-metal, ARM Cortex-A Linux)
-#   • Python 3 + venv
+#   • Formal documents (Typst)
+#   • Python 3 (virtual environment at /opt/venv, with pytest)
 #   • Zsh interactive shell
 #
-# Supported architecture: linux/amd64 only.
+# Supported architectures: linux/amd64, linux/arm64 (Apple Silicon).
 #
-# arm64 is not supported because:
-#   1. The Alire 2.1.0 aarch64 binary requires glibc 2.38, but Ubuntu 22.04
-#      ships glibc 2.35.
-#   2. Alire does not distribute pre-built gnat_native toolchains for
-#      aarch64-linux.
-# For arm64 / Apple Silicon, use Dockerfile.system (Ubuntu 24.04) instead.
+# Designed for nerdctl + containerd (rootless); also works with docker
+# and podman.
 #
-# Designed for nerdctl + containerd (rootless).
-#
-# Files expected in the build context:
-# - Dockerfile
+# Files expected in the build context (the repository root):
 # - .dockerignore
-# - .zshrc
+# - LICENSE
+# - ada/.zshrc
+# - ada/dev-doctor.sh
 # - entrypoint.sh
 #
 # Default toolchain versions:
-# - GNAT_VERSION=15.2.1
-# - GPRBUILD_VERSION=25.0.1
+# - ALIRE_VERSION=2.1.1
+# - GNAT_VERSION=16.1.0
+# - GNATPROVE_VERSION=16.1.0
+# - GPRBUILD_VERSION=26.0.1
 #
-# Override toolchain versions at build time:
-# nerdctl build \
-#   --build-arg GNAT_VERSION=15.2.2 \
-#   --build-arg GPRBUILD_VERSION=25.0.2 \
-#   -t dev-container-ada .
-#
-# Build example:
-# nerdctl build -t dev-container-ada .
+# Build example (from the repository root):
+# nerdctl build -f ada/Dockerfile -t dev-container-ada .
 #
 # Run example:
 # nerdctl run -it --rm \
@@ -74,15 +61,30 @@
 #   -w /workspace \
 #   dev-container-ada
 #
+# Reproducibility
+# ---------------
+# - The base image is pinned by digest.
+# - Alire, GNAT, GPRbuild, GNATprove, and Typst are pinned by version,
+#   and downloads are verified by SHA-256.
+# - The Alire community index is pinned to a commit (ALIRE_INDEX_COMMIT)
+#   and does not refresh automatically (index.auto_update = 0). Run
+#   `alr index --update-all` to fetch newer crates deliberately.
+# - APT packages come from the live Ubuntu 26.04 archive, without
+#   `apt-get upgrade`. Ubuntu's snapshot service does not serve the arm64
+#   (ports) archive, so neither architecture uses snapshots; each image
+#   records its exact package list in
+#   /usr/share/doc/dev-containers/packages-<arch>.txt instead. Dated
+#   snapshots will be added to both architectures together once the
+#   snapshot service supports ports.
+#
 # Notes
 # -----
 # - User identity is adapted at runtime by entrypoint.sh, not baked in at
 #   build time. The build-time user (dev:1000:1000) is a fallback for CI
 #   and Kubernetes environments where no HOST_* variables are passed.
-# - In rootless runtimes, container UID 0 maps to the host user via the
-#   user namespace. The entrypoint detects this and stays as UID 0 rather
-#   than dropping privileges, which would break bind-mount access.
-# - In rootful runtimes, the entrypoint drops to the adapted user via gosu.
+# - Alire's settings, cache, toolchains, and install prefix live under
+#   /opt/alire (ALIRE_SETTINGS_DIR), so they do not depend on HOME and
+#   are shared by whichever user the entrypoint selects.
 # - GNU Make is installed explicitly because many projects use Makefiles as
 #   the orchestration layer around alr, gprbuild, tests, formatting, and
 #   scripts.
@@ -91,23 +93,25 @@
 #   GNAT toolchain.
 #
 # ============================================================================
-# Pinned by digest for reproducibility. Update periodically:
-#   nerdctl pull ubuntu:22.04
-#   nerdctl image inspect ubuntu:22.04 | grep -A1 RepoDigests
-FROM ubuntu:22.04@sha256:3ba65aa20f86a0fad9df2b2c259c613df006b2e6d0bfcc8a146afb8c525a9751
+# Pinned by digest for reproducibility (multi-architecture index). Update:
+#   docker buildx imagetools inspect ubuntu:26.04
+FROM ubuntu:26.04@sha256:6a06111c3b0a8600feadb270aec771dc239bf407b25625f93f44ab00e11f4d3c
 
 # ----------------------------------------------------------------------------
 # Build arguments (alphabetized)
 # ----------------------------------------------------------------------------
-ARG ALIRE_SHA256=e3b32cb0afe981b23d1a68da77452cf81ee1d82de8ebaf01c5e233be8b463fbe
-ARG ALIRE_VERSION=2.1.0
-ARG ALIRE_ZIP=alr-2.1.0-bin-x86_64-linux.zip
+ARG ALIRE_INDEX_COMMIT=03d44a6e975a675d9f54dffcc0a2ef8ae3870873
+ARG ALIRE_SHA256_AMD64=09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7
+ARG ALIRE_SHA256_ARM64=d76c93ad3dc631826144e10bdabc6b3bf98783805bebfd5e4a0e852dd524d812
+ARG ALIRE_VERSION=2.1.1
 ARG DEBIAN_FRONTEND=noninteractive
-ARG GNAT_VERSION=15.2.1
-ARG GPRBUILD_VERSION=25.0.1
-ARG PYTEST_VERSION=9.0.3
-ARG TYPST_SHA256_AMD64=a6044cbad2a954deb921167e257e120ac0a16b20339ec01121194ff9d394996d
-ARG TYPST_VERSION=0.14.2
+ARG GNAT_VERSION=16.1.0
+ARG GNATPROVE_VERSION=16.1.0
+ARG GPRBUILD_VERSION=26.0.1
+ARG PYTEST_VERSION=9.2.0
+ARG TYPST_SHA256_AMD64=a6d077d0a95eed5a2eba715b2dae06be954f624ccbf85758a03f389ded33118c
+ARG TYPST_SHA256_ARM64=5aa8d74a3d906e60ea12a66ac2f37f8eef1b14cbad7182a745e393a10c23dcee
+ARG TYPST_VERSION=0.15.1
 ARG USER_GID=1000
 ARG USERNAME=dev
 ARG USER_UID=1000
@@ -115,11 +119,12 @@ ARG USER_UID=1000
 # ----------------------------------------------------------------------------
 # Environment variables (alphabetized)
 # ----------------------------------------------------------------------------
-ENV HOME=/home/${USERNAME}
+ENV ALIRE_SETTINGS_DIR=/opt/alire/settings \
+    HOME=/home/${USERNAME}
 ENV LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8 \
-    PATH=${HOME}/.local/bin:/usr/local/bin:${PATH} \
+    PATH=${HOME}/.local/bin:/opt/venv/bin:/opt/alire/prefix/bin:/opt/alire/gnat/bin:/opt/alire/gprbuild/bin:/usr/local/bin:${PATH} \
     SHELL=/usr/bin/zsh \
     TERM=xterm-256color \
     TZ=UTC
@@ -127,7 +132,7 @@ ENV LANG=en_US.UTF-8 \
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # ----------------------------------------------------------------------------
-# Base packages (alphabetized)
+# Base packages (alphabetized within each group)
 # ----------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
     binutils \
@@ -153,7 +158,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     procps \
     python3 \
     python3-dev \
-    python3-pip \
     python3-venv \
     ripgrep \
     rsync \
@@ -169,6 +173,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zsh \
     zsh-autosuggestions \
     zsh-syntax-highlighting \
+    # ------------------------------------------------------------------
+    # PostgreSQL client development (libpq 18 from Ubuntu 26.04)
+    # ------------------------------------------------------------------
+    libpq-dev \
+    postgresql-client-18 \
     # ------------------------------------------------------------------
     # Embedded: ARM Cortex-M bare-metal cross-compiler and tools
     # ------------------------------------------------------------------
@@ -199,6 +208,9 @@ RUN ar rcs /usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/libiconv.a
 # ----------------------------------------------------------------------------
 # Create developer user
 # ----------------------------------------------------------------------------
+# Ubuntu 26.04 ships an "ubuntu" user with UID 1000; it is renamed to the
+# developer user.
+# ----------------------------------------------------------------------------
 RUN set -eux; \
     if ! getent group "${USER_GID}" >/dev/null; then \
         groupadd --gid "${USER_GID}" "${USERNAME}"; \
@@ -222,17 +234,90 @@ RUN set -eux; \
 COPY LICENSE /usr/share/doc/dev-containers/LICENSE
 
 # ----------------------------------------------------------------------------
-# Install Alire
+# Install Alire (per architecture, verified by SHA-256)
 # ----------------------------------------------------------------------------
 WORKDIR /tmp
-RUN wget -q "https://github.com/alire-project/alire/releases/download/v${ALIRE_VERSION}/${ALIRE_ZIP}" \
- && echo "${ALIRE_SHA256}  ${ALIRE_ZIP}" | sha256sum -c - \
- && unzip -q "${ALIRE_ZIP}" \
- && install -m 0755 bin/alr /usr/local/bin/alr \
- && rm -rf /tmp/*
+RUN set -eux; \
+    case "$(uname -m)" in \
+      x86_64)  ALIRE_ARCH="x86_64"  ; ALIRE_SHA256="${ALIRE_SHA256_AMD64}" ;; \
+      aarch64) ALIRE_ARCH="aarch64" ; ALIRE_SHA256="${ALIRE_SHA256_ARM64}" ;; \
+      *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;; \
+    esac; \
+    ALIRE_ZIP="alr-${ALIRE_VERSION}-bin-${ALIRE_ARCH}-linux.zip"; \
+    wget -q "https://github.com/alire-project/alire/releases/download/v${ALIRE_VERSION}/${ALIRE_ZIP}"; \
+    echo "${ALIRE_SHA256}  ${ALIRE_ZIP}" | sha256sum -c -; \
+    unzip -q "${ALIRE_ZIP}"; \
+    install -m 0755 bin/alr /usr/local/bin/alr; \
+    rm -rf /tmp/*
 
 # ----------------------------------------------------------------------------
-# Switch to developer user
+# Configure Alire under /opt/alire and install the pinned toolchain
+# ----------------------------------------------------------------------------
+# - Settings, cache, toolchains, and the install prefix do not depend on HOME.
+# - The community index is pinned to ALIRE_INDEX_COMMIT and never refreshes
+#   on its own.
+# - The toolchain assistant is disabled; the selection below is the only one.
+# - Stable links (/opt/alire/gnat, /opt/alire/gprbuild) put the selected
+#   toolchains on PATH without globbing version-specific directory names.
+# ----------------------------------------------------------------------------
+RUN set -eux; \
+    mkdir -p /opt/alire/cache /opt/alire/prefix /opt/alire/settings /opt/alire/toolchains; \
+    alr settings --global --set cache.dir /opt/alire/cache; \
+    alr settings --global --set toolchain.dir /opt/alire/toolchains; \
+    alr settings --global --set toolchain.assistant false; \
+    alr settings --global --set index.auto_update 0; \
+    alr --non-interactive index --reset-community; \
+    INDEX_REPO="$(find /opt/alire -maxdepth 6 -type d -name .git -path '*indexes*' -printf '%h\n' | head -1)"; \
+    test -n "${INDEX_REPO}"; \
+    INDEX_BRANCH="$(git -C "${INDEX_REPO}" rev-parse --abbrev-ref HEAD)"; \
+    git -C "${INDEX_REPO}" fetch --quiet origin "${ALIRE_INDEX_COMMIT}" || true; \
+    git -C "${INDEX_REPO}" checkout --quiet -B "${INDEX_BRANCH}" "${ALIRE_INDEX_COMMIT}"; \
+    alr --non-interactive toolchain --select \
+        "gnat_native=${GNAT_VERSION}" \
+        "gprbuild=${GPRBUILD_VERSION}"; \
+    alr --non-interactive install --prefix=/opt/alire/prefix \
+        "gnatprove=${GNATPROVE_VERSION}"; \
+    ln -s "$(find /opt/alire/toolchains -maxdepth 1 -type d -name "gnat_native_${GNAT_VERSION}_*" | head -1)" /opt/alire/gnat; \
+    ln -s "$(find /opt/alire/toolchains -maxdepth 1 -type d -name "gprbuild_${GPRBUILD_VERSION}_*" | head -1)" /opt/alire/gprbuild; \
+    test -x /opt/alire/gnat/bin/gnat; \
+    test -x /opt/alire/gprbuild/bin/gprbuild; \
+    test -x /opt/alire/prefix/bin/gnatprove; \
+    git -C "${INDEX_REPO}" rev-parse HEAD > /usr/share/doc/dev-containers/alire-index-commit.txt; \
+    chmod -R a+rwX /opt/alire; \
+    alr version; \
+    alr toolchain
+
+# ----------------------------------------------------------------------------
+# Python virtual environment (PEP 668) with pytest
+# ----------------------------------------------------------------------------
+RUN python3 -m venv /opt/venv \
+ && /opt/venv/bin/pip install --no-cache-dir "pytest==${PYTEST_VERSION}" \
+ && chmod -R a+rwX /opt/venv
+
+# ----------------------------------------------------------------------------
+# Typst (formal document compiler), per architecture
+# ----------------------------------------------------------------------------
+RUN set -eux; \
+    case "$(uname -m)" in \
+      x86_64)  TYPST_ARCH="x86_64"  ; TYPST_SHA256="${TYPST_SHA256_AMD64}" ;; \
+      aarch64) TYPST_ARCH="aarch64" ; TYPST_SHA256="${TYPST_SHA256_ARM64}" ;; \
+      *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;; \
+    esac; \
+    TYPST_TAR="typst-${TYPST_ARCH}-unknown-linux-musl.tar.xz"; \
+    wget -q "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/${TYPST_TAR}"; \
+    echo "${TYPST_SHA256}  ${TYPST_TAR}" | sha256sum -c -; \
+    tar xf "${TYPST_TAR}"; \
+    install -m 0755 "typst-${TYPST_ARCH}-unknown-linux-musl/typst" /usr/local/bin/typst; \
+    rm -rf /tmp/*
+
+# ----------------------------------------------------------------------------
+# Record the exact package list for this architecture
+# ----------------------------------------------------------------------------
+RUN dpkg-query -W -f '${Package}\t${Version}\t${Architecture}\n' \
+      > "/usr/share/doc/dev-containers/packages-$(dpkg --print-architecture).txt"
+
+# ----------------------------------------------------------------------------
+# Developer home
 # ----------------------------------------------------------------------------
 USER ${USERNAME}
 WORKDIR ${HOME}
@@ -245,20 +330,7 @@ RUN mkdir -p \
 COPY --chown=${USER_UID}:${USER_GID} ada/.zshrc ${HOME}/.zshrc
 
 # ----------------------------------------------------------------------------
-# Configure Alire toolchain
-# ----------------------------------------------------------------------------
-RUN alr --non-interactive toolchain --select \
-        gnat_native=${GNAT_VERSION} \
-        gprbuild=${GPRBUILD_VERSION} \
- && echo "" \
- && echo "Configured Alire environment:" \
- && alr version \
- && echo "" \
- && echo "Installed toolchains:" \
- && alr toolchain
-
-# ----------------------------------------------------------------------------
-# Install entrypoint and set runtime defaults
+# Entrypoint, diagnostics, and runtime defaults
 # ----------------------------------------------------------------------------
 # The entrypoint runs as root so it can create/adapt the user at startup.
 # In rootful runtimes it drops privileges via gosu.  In rootless runtimes
@@ -266,38 +338,13 @@ RUN alr --non-interactive toolchain --select \
 # ----------------------------------------------------------------------------
 USER root
 
-# Create symlinks for toolchain binaries so gnat/gprbuild are available in
-# non-interactive contexts (scripts, CI, make) without sourcing .zshrc.
-RUN for d in /home/${USERNAME}/.local/share/alire/toolchains/*/bin; do \
-        if [ -d "$d" ]; then \
-            for bin in "$d"/*; do \
-                name="$(basename "$bin")"; \
-                [ ! -e "/usr/local/bin/$name" ] && \
-                    ln -s "$bin" "/usr/local/bin/$name"; \
-            done; \
-        fi; \
-    done
-
-# ----------------------------------------------------------------------------
-# Python packages (pytest for test automation)
-# ----------------------------------------------------------------------------
-RUN pip3 install --no-cache-dir "pytest==${PYTEST_VERSION}"
-
-# ----------------------------------------------------------------------------
-# Typst (formal document compiler)
-#
-# This image is amd64 only (see header), so only the x86_64 Typst binary
-# is required.
-# ----------------------------------------------------------------------------
-RUN wget -q "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-x86_64-unknown-linux-musl.tar.xz" \
- && echo "${TYPST_SHA256_AMD64}  typst-x86_64-unknown-linux-musl.tar.xz" | sha256sum -c - \
- && tar xf typst-x86_64-unknown-linux-musl.tar.xz \
- && install -m 0755 typst-x86_64-unknown-linux-musl/typst /usr/local/bin/typst \
- && rm -rf typst-x86_64-unknown-linux-musl*
-
+COPY ada/dev-doctor.sh /usr/local/bin/dev-doctor
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+RUN chmod 0755 /usr/local/bin/dev-doctor /usr/local/bin/entrypoint.sh
 
+# /workspace is normally a bind mount; when it is not, keep it writable so
+# tools that write temporary files to the working directory (alr) still work.
+RUN mkdir -p /workspace && chmod 1777 /workspace
 WORKDIR /workspace
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
