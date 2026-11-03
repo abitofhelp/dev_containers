@@ -1,0 +1,12 @@
+--  Acceptance fixture A8: link with the system libpq and call it.
+project Libpq_Check is
+   for Source_Dirs use ("src");
+   for Object_Dir use "obj";
+   for Exec_Dir use "bin";
+   for Create_Missing_Dirs use "True";
+   for Main use ("libpq_check.adb");
+
+   package Linker is
+      for Default_Switches ("Ada") use ("-lpq");
+   end Linker;
+end Libpq_Check;

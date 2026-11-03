@@ -1,0 +1,11 @@
+name = "offline_deps"
+description = "Acceptance fixture A10: builds offline from prefetched dependencies."
+version = "0.1.0"
+authors = ["Michael Gardner"]
+maintainers = ["Michael Gardner <mjgardner@abitofhelp.com>"]
+maintainers-logins = ["abitofhelp"]
+licenses = "BSD-3-Clause"
+executables = ["offline_deps"]
+
+[[depends-on]]
+libhello = "1.0.1"
