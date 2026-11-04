@@ -60,6 +60,10 @@ check "A1  alr selects gnat_native $EXPECT_GNAT" bash -c "alr toolchain | grep -
 # user's primary group name can legitimately differ from the user name: on a
 # macOS host, GID 20 is "staff", which Ubuntu already names "dialout".)
 check "A1  the base image's ubuntu group was renamed" bash -c '! getent group ubuntu'
+# The installed tools are read-only for the developer user. In rootless
+# runtimes the developer is UID 0 (the host user), which can write anyway.
+check "A1  the installed toolchain is read-only for the developer user" \
+    bash -c '[ "$(id -u)" = 0 ] || { for f in /opt/alire/gnat/bin/gnat /opt/alire/gprbuild/bin/gprbuild /opt/alire/prefix/bin/gnatprove /opt/venv/bin/python3; do [ ! -w "$f" ] && [ ! -w "$(dirname "$f")" ] || exit 1; done; }'
 check "A1  APT is pinned to a dated Ubuntu snapshot" \
     bash -c 'apt-config dump | grep -Eq "^APT::Snapshot \"[0-9]{8}T[0-9]{6}Z\";"'
 

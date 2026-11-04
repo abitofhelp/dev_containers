@@ -33,10 +33,17 @@ are rebuilt and republished under this version.
   newer crates but departs from the image's recorded baseline.
 - Ada image: Python tools live in a virtual environment at `/opt/venv`
   (PEP 668); pytest 9.2.0.
+- Ada image: the installed GNAT, GPRbuild, GNATprove, and Python virtual
+  environment are read-only for the developer user; Alire's settings,
+  index, cache, and additional toolchains remain writable.
 - Ada image: Typst 0.15.1.
 - Ada CI: build and test natively on amd64 and arm64 GitHub runners (no
   QEMU), and save each architecture's package list and tool versions as
   build artifacts.
+- Ada publishing: each architecture is built on a native runner, pushed by
+  digest, and acceptance-tested as pushed; the multi-platform image and its
+  tags are created only after both architectures pass, so the published
+  image is the tested image.
 - Ada Makefile: `make test` now runs the acceptance tests (A1–A8).
 
 ### Added
@@ -68,6 +75,13 @@ are rebuilt and republished under this version.
 
 - Ada image: Ubuntu 26.04 ships an `ubuntu` group with GID 1000, which is
   now renamed to the developer user's group instead of being left behind.
+- Ada image: the installed toolchains kept the UID of the machine that built
+  them (1001), so a developer with UID 1001 owned the compiler. Everything
+  under `/opt/alire` is now owned by root.
+- Ada image: `alr index --update-all` failed for non-root users (Git
+  rejected the root-owned index repository as "dubious ownership"), and
+  every `alr` command warned that the index branch was undefined. Git now
+  trusts the index repository for all users.
 
 ### Deprecated
 

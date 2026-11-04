@@ -187,7 +187,8 @@ doctor:
 
 # A10: phase 1 prefetches the fixture's dependencies with network access
 # (sandboxed in the fixture copy); phase 2 builds it with no network and
-# checks that the compiler version did not change.
+# checks both the GNAT on PATH and the GNAT that Alire selected for the
+# project (alr exec), which can differ when a project's constraints demand.
 .PHONY: test-offline
 test-offline:
 	@set -e; work="$$(mktemp -d)"; trap 'rm -rf "$$work"' EXIT; \
@@ -199,5 +200,7 @@ test-offline:
 	echo "=== A10 phase 2: build with --network none ==="; \
 	$(CONTAINER_CLI) run --rm --network none -e HOST_UID=$(HOST_UID) -e HOST_GID=$(HOST_GID) -e HOST_USER=$(HOST_USER) \
 		-v "$$work":/workspace -w /workspace $(IMAGE_NAME) \
-		bash -c 'alr -n build && ./bin/offline_deps && gnat --version | head -1 | grep -q "GNAT $(GNAT_VERSION)"'; \
+		bash -c 'alr -n build && ./bin/offline_deps \
+			&& gnat --version | grep -q "^GNAT $(GNAT_VERSION)" \
+			&& alr -n exec -- gnat --version | grep -q "^GNAT $(GNAT_VERSION)"'; \
 	echo "=== A10 passed ==="
