@@ -208,12 +208,15 @@ RUN ar rcs /usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/libiconv.a
 # ----------------------------------------------------------------------------
 # Create developer user
 # ----------------------------------------------------------------------------
-# Ubuntu 26.04 ships an "ubuntu" user with UID 1000; it is renamed to the
-# developer user.
+# Ubuntu 26.04 ships an "ubuntu" user and group with ID 1000; both are
+# renamed to the developer user.
 # ----------------------------------------------------------------------------
 RUN set -eux; \
     if ! getent group "${USER_GID}" >/dev/null; then \
         groupadd --gid "${USER_GID}" "${USERNAME}"; \
+    elif [ "$(getent group "${USER_GID}" | cut -d: -f1)" != "${USERNAME}" ] \
+         && ! getent group "${USERNAME}" >/dev/null; then \
+        groupmod --new-name "${USERNAME}" "$(getent group "${USER_GID}" | cut -d: -f1)"; \
     fi; \
     if id -u "${USERNAME}" >/dev/null 2>&1; then \
         usermod --uid "${USER_UID}" --gid "${USER_GID}" --shell /usr/bin/zsh "${USERNAME}"; \
