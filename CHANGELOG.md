@@ -12,8 +12,11 @@ go 1.1.0, rust 1.0.2) are retired.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-04
+
 Modernizes the Ada image and makes it the single Ada image for amd64 and
-arm64 (#3). The C++, Go, and Rust images are unchanged.
+arm64 (#3). The C++, Go, and Rust Dockerfiles are unchanged; those images
+are rebuilt and republished under this version.
 
 ### Changed
 
@@ -54,6 +57,11 @@ arm64 (#3). The C++, Go, and Rust images are unchanged.
     (`make -f ada/Makefile test-offline`).
 - USER_GUIDE: the Ada image refresh procedure, and the planned design for
   APT snapshots. Ubuntu's snapshot service does not yet serve arm64.
+
+### Fixed
+
+- Ada image: the developer user's primary group now matches the user name.
+  Ubuntu 26.04 ships an `ubuntu` group with GID 1000, which is renamed.
 
 ### Deprecated
 

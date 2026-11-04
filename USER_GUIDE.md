@@ -8,8 +8,8 @@
 
 # User Guide: dev_containers
 
-**Version**: 1.0.0
-**Date**: 2026-04-06
+**Version**: 1.2.0
+**Date**: 2026-11-04
 **Authors**: Michael Gardner, Claude (Anthropic), GPT (OpenAI)
 
 ---
@@ -35,6 +35,10 @@ the embedded tools listed in section 6.
   crates.
 - Run `dev-doctor` inside the container (or `make -f ada/Makefile doctor`)
   to print every tool version.
+- **Known limitation:** the published `libgpr2` 26.0.0 caps GNAT below 16,
+  so projects that depend on `libgpr2` or `libadalang` do not get GNAT 16.1.
+  Alire instead downloads `gnat_native` 15.3.1 on first use. The upstream
+  fixes are on AdaCore's master branch and are expected in the 27 releases.
 
 **Deprecated:** `dev-container-ada-system` (Ubuntu 24.04, `gnat-13`) was the
 arm64 workaround from before Alire shipped an arm64 GNAT. No new versions
@@ -60,7 +64,7 @@ and Bazelisk.
 
 ### 0.4 Rust
 
-Single image: `dev-container-rust` on Ubuntu 24.04 with Rust stable via
+Single image: `dev-container-rust` on Ubuntu 24.04 with Rust 1.95.0 via
 rustup. Includes embedded targets (Cortex-M0 through M33), the
 `thumbv7em-none-eabihf` target used by Teensy 4.1, `cargo objcopy` via
 `cargo-binutils`, `teensy_loader_cli`, probe-rs, cargo-binstall, and mold
@@ -279,15 +283,17 @@ cd ~/Ada/github.com/abitofhelp
 make -f ~/containers/dev_containers/ada/Makefile run
 ```
 
-This mounts the entire `abitofhelp` directory so that `../functional` and
-`../deps26` pins resolve inside the container.
+This mounts the entire `abitofhelp` directory so that relative pins such as
+`../functional` resolve inside the container.
 
 ---
 
 ## 6. Embedded Board Support
 
 Ada, C++, and Rust images include embedded-development support. The exact
-tooling differs by language image:
+tooling differs by language image. The Ada image provides the ARM GCC
+cross-compilers, OpenOCD, ST-Link tools, and `gdb-multiarch`; an Ada
+cross-compiler (for example, Alire's `gnat_arm_elf`) is not preinstalled.
 
 | Board / Target | SoC / CPU | Core | Runtime | Image support |
 |----------------|-----------|------|---------|---------------|
@@ -410,7 +416,8 @@ docker buildx imagetools inspect ubuntu:24.04   # other images
   `cpp/Dockerfile`.
 - **C++ (system)**: Tied to Ubuntu's package versions.
 - **Go**: Update the Go tarball URL and SHA256 in `go/Dockerfile`.
-- **Rust**: Rust stable is installed via `rustup` at build time.
+- **Rust**: Update `RUST_VERSION` in `rust/Dockerfile` (installed via
+  `rustup` at build time).
 
 ### Alire
 
@@ -431,8 +438,8 @@ security notice affects a package in the image:
    previous release's, and summarize the security-relevant changes in the
    pull request.
 3. Run the acceptance tests on both architectures: `make -f ada/Makefile
-   test` (A1–A8), `make -f ada/Makefile test-offline` (A10), and the
-   consumer regression matrix (A11).
+   test` (A1–A8), `make -f ada/Makefile test-offline` (A10), and
+   build representative consumer projects (A11; see issue #3).
 4. Merge, then publish through the normal release process. Record the
    digest currently behind `latest` first, so that the change can be rolled
    back.
