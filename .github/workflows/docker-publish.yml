@@ -47,15 +47,28 @@ on:
 jobs:
   # --------------------------------------------------------------------------
   # Ada — Alire-managed toolchain (amd64 + arm64)
-  # The published image is built with Buildx (arm64 under QEMU); the
-  # Docker Build workflow builds and tests both architectures natively.
+  # --------------------------------------------------------------------------
+  # Each architecture is built on a native runner and pushed by digest only
+  # (no tag). The acceptance tests then run against that pushed digest, so
+  # the image that is tested is the image that is published. Only when both
+  # architectures pass does publish-ada-manifest create the multi-platform
+  # image and its tags (latest, v<X.Y.Z>, gnat-*). A failure changes no tag.
   # --------------------------------------------------------------------------
   publish-ada:
+    name: publish-ada (${{ matrix.arch }})
     if: >-
       github.event_name == 'push' ||
       github.event.inputs.image == 'all' ||
       github.event.inputs.image == 'ada'
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
     permissions:
       contents: read
       packages: write
@@ -70,8 +83,78 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest (native ${{ matrix.arch }})
+        id: build
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
+        with:
+          context: .
+          file: ada/Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          build-args: |
+            GNAT_VERSION=${{ env.GNAT_VERSION }}
+            GNATPROVE_VERSION=${{ env.GNATPROVE_VERSION }}
+            GPRBUILD_VERSION=${{ env.GPRBUILD_VERSION }}
+          outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Acceptance tests A1-A8 on the pushed image
+        env:
+          CANDIDATE: ${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+        run: |
+          docker pull "$CANDIDATE"
+          docker run --rm \
+            -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" -e HOST_USER="$(whoami)" \
+            -e EXPECT_GNAT="$GNAT_VERSION" -e EXPECT_GNATPROVE="$GNATPROVE_VERSION" \
+            -v "${{ github.workspace }}/ada":/workspace -w /workspace \
+            "$CANDIDATE" bash tests/acceptance.sh
+
+      - name: Acceptance test A10 on the pushed image
+        run: >-
+          make -f ada/Makefile test-offline CONTAINER_CLI=docker
+          IMAGE_NAME=${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          GNAT_VERSION=${{ env.GNAT_VERSION }}
+
+      - name: Record the tested digest
+        run: |
+          mkdir -p digests
+          echo "${{ steps.build.outputs.digest }}" > "digests/${{ matrix.arch }}"
+
+      - name: Upload the tested digest
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ada-digest-${{ matrix.arch }}
+          path: digests/${{ matrix.arch }}
+          retention-days: 1
+
+  publish-ada-manifest:
+    name: publish-ada (manifest and tags)
+    needs: publish-ada
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    env:
+      IMAGE_NAME: ghcr.io/abitofhelp/dev-container-ada
+      GNAT_VERSION: ${{ github.event.inputs.gnat_version || '16.1.0' }}
+      GPRBUILD_VERSION: ${{ github.event.inputs.gprbuild_version || '26.0.1' }}
+
+    steps:
+      - name: Download the tested digests
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: ada-digest-*
+          merge-multiple: true
+          path: digests
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
@@ -94,19 +177,18 @@ jobs:
             type=raw,value=gnat-${{ env.GNAT_VERSION }}-gprbuild-${{ env.GPRBUILD_VERSION }}
             type=ref,event=tag
 
-      - name: Build and push container image
-        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
-        with:
-          context: .
-          file: ada/Dockerfile
-          push: true
-          platforms: linux/amd64,linux/arm64
-          build-args: |
-            GNAT_VERSION=${{ env.GNAT_VERSION }}
-            GNATPROVE_VERSION=${{ env.GNATPROVE_VERSION }}
-            GPRBUILD_VERSION=${{ env.GPRBUILD_VERSION }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+      - name: Create the multi-platform image from the tested digests
+        run: |
+          tags=()
+          while IFS= read -r tag; do
+            [ -n "$tag" ] && tags+=(-t "$tag")
+          done <<< "${{ steps.meta.outputs.tags }}"
+          docker buildx imagetools create "${tags[@]}" \
+            "${IMAGE_NAME}@$(cat digests/amd64)" \
+            "${IMAGE_NAME}@$(cat digests/arm64)"
+
+      - name: Inspect the published image
+        run: docker buildx imagetools inspect "${IMAGE_NAME}:gnat-${GNAT_VERSION}"
 
   # --------------------------------------------------------------------------
   # Ada — System toolchain: DEPRECATED. New versions of

@@ -29,6 +29,12 @@ the embedded tools listed in section 6.
 
 - The toolchain lives under `/opt/alire` (Alire's settings, cache,
   toolchains, and install prefix), so it does not depend on `HOME`.
+- The installed GNAT, GPRbuild, GNATprove, and Python virtual environment
+  are read-only for the developer user. Alire's settings, index, and cache
+  are writable, and Alire can add other toolchains that a project requires
+  (they are installed beside the default ones). To add Python packages, use
+  `sudo /opt/venv/bin/pip install …` or create your own virtual
+  environment.
 - The Alire index is pinned to the commit recorded in
   `/usr/share/doc/dev-containers/alire-index-commit.txt` and does not
   refresh automatically. `alr index --update-all` fetches newer crates, but
@@ -450,7 +456,8 @@ APT packages in the Ada image come from a dated Ubuntu snapshot
 records its exact package list in
 `/usr/share/doc/dev-containers/packages-<arch>.txt`. CI also saves the list
 as a build artifact. Only `ca-certificates` comes from the live archive,
-because the snapshot service requires HTTPS. Refresh the image monthly, or
+because the snapshot service requires HTTPS; check that its version matches
+the snapshot's when you refresh (it did for `20261103T000000Z`). Refresh the image monthly, or
 sooner when an Ubuntu security notice affects a package in the image:
 
 1. On a branch, update the `ubuntu:26.04` digest (see above) and advance

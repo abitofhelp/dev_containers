@@ -281,6 +281,15 @@ RUN set -eux; \
 # - The toolchain assistant is disabled; the selection below is the only one.
 # - Stable links (/opt/alire/gnat, /opt/alire/gprbuild) put the selected
 #   toolchains on PATH without globbing version-specific directory names.
+# - Permissions: everything is owned by root (the toolchain archives carry
+#   their builders' UIDs, such as 1001, which a runtime user could share),
+#   and the installed GNAT, GPRbuild, and GNATprove are read-only for the
+#   developer user. Alire's settings and index stay writable, and
+#   the cache and toolchains directories are sticky and world-writable, so
+#   any runtime UID can build and add toolchains (for example, a GNAT 15
+#   that a project requires) without changing the installed ones. Git
+#   trusts the root-owned index repository for every user (safe.directory),
+#   so `alr index --update-all` and index branch detection work.
 # ----------------------------------------------------------------------------
 RUN set -eux; \
     mkdir -p /opt/alire/cache /opt/alire/prefix /opt/alire/settings /opt/alire/toolchains; \
@@ -305,7 +314,11 @@ RUN set -eux; \
     test -x /opt/alire/gprbuild/bin/gprbuild; \
     test -x /opt/alire/prefix/bin/gnatprove; \
     git -C "${INDEX_REPO}" rev-parse HEAD > /usr/share/doc/dev-containers/alire-index-commit.txt; \
-    chmod -R a+rwX /opt/alire; \
+    git config --system --add safe.directory "${INDEX_REPO}"; \
+    chown -R root:root /opt/alire; \
+    chmod -R a+rX,go-w /opt/alire; \
+    chmod -R a+rwX /opt/alire/settings; \
+    chmod 1777 /opt/alire/cache /opt/alire/toolchains; \
     alr version; \
     alr toolchain
 
@@ -314,7 +327,7 @@ RUN set -eux; \
 # ----------------------------------------------------------------------------
 RUN python3 -m venv /opt/venv \
  && /opt/venv/bin/pip install --no-cache-dir "pytest==${PYTEST_VERSION}" \
- && chmod -R a+rwX /opt/venv
+ && chmod -R a+rX,go-w /opt/venv
 
 # ----------------------------------------------------------------------------
 # Typst (formal document compiler), per architecture
