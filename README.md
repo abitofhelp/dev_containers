@@ -10,11 +10,16 @@ Teensy 4.1 bare-metal Rust support.
 
 | Image | Language | Base | Architectures | Embedded |
 |-------|----------|------|---------------|----------|
-| `dev-container-ada` | Ada (Alire: GNAT 16.1, GNATprove 16.1, GPRbuild 26.0.1; libpq 18) | Ubuntu 26.04 | amd64, arm64 | Cortex-M/A |
+| `dev-container-ada` | Ada (Alire: GNAT 16.1, GNATprove 16.1, GPRbuild 26.0.1; libpq 18) | Ubuntu 26.04 | amd64, arm64 | Cortex-M/A tools¹ |
 | `dev-container-cpp` | C++ (Clang 20, CMake, vcpkg) | Ubuntu 24.04 | amd64, arm64 | Cortex-M/A |
 | `dev-container-cpp-system` | C++ (GCC 13, Clang 18, apt) | Ubuntu 24.04 | amd64, arm64 | Cortex-M/A |
 | `dev-container-go` | Go 1.26.1, protobuf, Bazelisk | Ubuntu 24.04 | amd64, arm64 | — |
-| `dev-container-rust` | Rust stable (rustup) | Ubuntu 24.04 | amd64, arm64 | Cortex-M/A, Teensy 4.1 |
+| `dev-container-rust` | Rust 1.95.0 (rustup) | Ubuntu 24.04 | amd64, arm64 | Cortex-M/A, Teensy 4.1 |
+
+¹ The Ada image includes the ARM GCC cross-compilers (`arm-none-eabi`,
+`arm-linux-gnueabihf`), OpenOCD, ST-Link tools, and `gdb-multiarch`. An
+Ada cross-compiler (for example, Alire's `gnat_arm_elf`) is not
+preinstalled.
 
 `dev-container-ada-system` is **deprecated** (see
 [Deprecated Images](#deprecated-images)).
@@ -191,7 +196,7 @@ pinned, with SHA256 verification where applicable.
 
 | Image | Status | Use instead | Why |
 |-------|--------|-------------|-----|
-| `dev-container-ada-system` | Deprecated in the release after v1.1.0. No new versions are published. | `dev-container-ada` | It was a workaround: Alire had no arm64 Linux GNAT, so Apple Silicon users needed Ubuntu's `gnat-13`. Alire now ships GNAT for arm64, and `dev-container-ada` supports amd64 and arm64. |
+| `dev-container-ada-system` | Deprecated in v1.2.0. No new versions are published. | `dev-container-ada` | It was a workaround: Alire had no arm64 Linux GNAT, so Apple Silicon users needed Ubuntu's `gnat-13`. Alire now ships GNAT for arm64, and `dev-container-ada` supports amd64 and arm64. |
 
 Existing `dev-container-ada-system` tags (including `v1.1.0` and
 `system-gnat-13`) remain on GHCR for anyone who needs the old environment.
@@ -320,7 +325,7 @@ dev_containers/
 │   ├── .zshrc
 │   └── examples/hello_go/
 └── rust/
-    ├── Dockerfile           ← Rust stable via rustup
+    ├── Dockerfile           ← Rust 1.95.0 via rustup
     ├── Makefile
     ├── .zshrc
     └── examples/hello_rust/
