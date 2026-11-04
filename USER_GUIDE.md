@@ -31,16 +31,32 @@ the embedded tools listed in section 6.
   toolchains, and install prefix), so it does not depend on `HOME`.
 - The Alire index is pinned to the commit recorded in
   `/usr/share/doc/dev-containers/alire-index-commit.txt` and does not
-  refresh automatically. Run `alr index --update-all` when you want newer
-  crates.
+  refresh automatically. `alr index --update-all` fetches newer crates, but
+  it changes that container's index and departs from the image's recorded
+  baseline. Builds there may then resolve different crate versions.
+- APT is pinned to the dated Ubuntu snapshot in
+  `/etc/apt/apt.conf.d/50snapshot`, so `sudo apt-get install` adds packages
+  that match the image. Delete that file to install from the live archive.
 - Run `dev-doctor` inside the container (or `make -f ada/Makefile doctor`)
   to print every tool version.
 - GPRbuild is Alire's `gprbuild` crate 26.0.1; its binary reports
   `GPRBUILD 26.0.0` in `gprbuild --version`.
-- **Known limitation:** the published `libgpr2` 26.0.0 caps GNAT below 16,
-  so projects that depend on `libgpr2` or `libadalang` do not get GNAT 16.1.
-  Alire instead downloads `gnat_native` 15.3.1 on first use. The upstream
-  fixes are on AdaCore's master branch and are expected in the 27 releases.
+- **Known limitation (libadalang):** the current Alire release of `libgpr2`
+  requires a GNAT earlier than 16. Projects that use `libadalang` (or
+  `libgpr2`) therefore get an Alire-selected GNAT 15.x, downloaded on first
+  use, instead of the image's GNAT 16.1.0. Check the selected compiler with
+  `alr exec -- gnat --version`. This will be revisited when updated upstream
+  packages are published.
+- **PostgreSQL:** `psql` and libpq (`libpq-dev`) are installed, but no
+  database server is. Connect to an existing PostgreSQL instance or run one
+  in a separate container.
+- **GNATprove:** run SPARK proofs on a GPR project directly, for example:
+
+  ```bash
+  gnatprove -P my_project.gpr --level=2 --checks-as-errors=on --report=fail
+  ```
+
+  The command exits with a nonzero status when a check is not proved.
 
 **Deprecated:** `dev-container-ada-system` (Ubuntu 24.04, `gnat-13`) was the
 arm64 workaround from before Alire shipped an arm64 GNAT. No new versions
@@ -429,13 +445,16 @@ Update `ALIRE_VERSION` and both SHA256 checksums (amd64 and arm64) in
 
 ### Ada image refresh procedure
 
-APT packages in the Ada image come from the live Ubuntu 26.04 archive,
-without `apt-get upgrade`, and each image records its exact package list in
+APT packages in the Ada image come from a dated Ubuntu snapshot
+(`UBUNTU_SNAPSHOT` in `ada/Dockerfile`) on both architectures, and each image
+records its exact package list in
 `/usr/share/doc/dev-containers/packages-<arch>.txt`. CI also saves the list
-as a build artifact. Refresh the image monthly, or sooner when an Ubuntu
-security notice affects a package in the image:
+as a build artifact. Only `ca-certificates` comes from the live archive,
+because the snapshot service requires HTTPS. Refresh the image monthly, or
+sooner when an Ubuntu security notice affects a package in the image:
 
-1. On a branch, update the `ubuntu:26.04` digest (see above).
+1. On a branch, update the `ubuntu:26.04` digest (see above) and advance
+   `UBUNTU_SNAPSHOT` to a recent date (format `YYYYMMDDTHHMMSSZ`).
 2. Rebuild on both architectures. Compare the new package lists with the
    previous release's, and summarize the security-relevant changes in the
    pull request.
@@ -446,13 +465,11 @@ security notice affects a package in the image:
    digest currently behind `latest` first, so that the change can be rolled
    back.
 
-**Why there are no APT snapshots (yet):** Ubuntu's snapshot service
-(`snapshot.ubuntu.com`) does not serve the `ubuntu-ports` archive, which
-holds arm64 packages, so arm64 cannot be pinned to a dated snapshot. To keep
-both architectures consistent, neither uses snapshots. **Planned design:**
-once the snapshot service supports ports, add an `APT::Snapshot` date to
-both architectures in one change. Step 1 above then also advances the
-snapshot date.
+**Why arm64 sources are rewritten:** since Ubuntu 26.04, arm64 packages are
+served from `archive.ubuntu.com`, which the snapshot service
+(`snapshot.ubuntu.com`) covers. The base image's arm64 sources still name
+`ports.ubuntu.com`, so the Dockerfile points them at the main archive before
+enabling the snapshot.
 
 ---
 
