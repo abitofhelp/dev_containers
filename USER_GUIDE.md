@@ -35,6 +35,8 @@ the embedded tools listed in section 6.
   crates.
 - Run `dev-doctor` inside the container (or `make -f ada/Makefile doctor`)
   to print every tool version.
+- GPRbuild is Alire's `gprbuild` crate 26.0.1; its binary reports
+  `GPRBUILD 26.0.0` in `gprbuild --version`.
 - **Known limitation:** the published `libgpr2` 26.0.0 caps GNAT below 16,
   so projects that depend on `libgpr2` or `libadalang` do not get GNAT 16.1.
   Alire instead downloads `gnat_native` 15.3.1 on first use. The upstream

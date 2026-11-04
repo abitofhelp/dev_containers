@@ -19,13 +19,15 @@ doc_dir=/usr/share/doc/dev-containers
 arch="$(dpkg --print-architecture 2>/dev/null || uname -m)"
 
 # Print one labelled line: the first line of the command's output, or
-# "MISSING" (and a failing status) if the command fails.
+# "MISSING" (and a failing status) if the command fails or prints nothing.
+# The full output is captured before trimming, so the command's own exit
+# status is checked (a pipe into head would hide it).
 report() {
     local label="$1"
     shift
     local out
-    if out="$("$@" 2>&1 | head -1)" && [ -n "$out" ]; then
-        printf '%-20s %s\n' "$label" "$out"
+    if out="$("$@" 2>&1)" && [ -n "$out" ]; then
+        printf '%-20s %s\n' "$label" "${out%%$'\n'*}"
     else
         printf '%-20s %s\n' "$label" "MISSING"
         status=1
