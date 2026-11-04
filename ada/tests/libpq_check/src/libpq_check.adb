@@ -1,7 +1,7 @@
 --  Copyright (c) 2026 Michael Gardner, A Bit of Help, Inc.
 --  SPDX-License-Identifier: BSD-3-Clause
---  Acceptance fixture A8: proves that the libpq headers' library links and
---  resolves at run time. It prints the libpq version (for example, 180006)
+--  Acceptance fixture A8: proves that the program links with libpq and that
+--  libpq resolves at run time. It prints the libpq version (for example, 180006)
 --  and exits with a failure status if libpq is older than 17.
 
 with Ada.Command_Line;
