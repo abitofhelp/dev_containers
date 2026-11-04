@@ -10,7 +10,7 @@ Teensy 4.1 bare-metal Rust support.
 
 | Image | Language | Base | Architectures | Embedded |
 |-------|----------|------|---------------|----------|
-| `dev-container-ada` | Ada (Alire: GNAT 16.1, GNATprove 16.1, GPRbuild 26.0.1; libpq 18) | Ubuntu 26.04 | amd64, arm64 | Cortex-M/A tools¹ |
+| `dev-container-ada` | Ada (Alire: GNAT 16.1, GNATprove 16.1, GPRbuild 26.0.1; libpq 18) | Ubuntu 26.04 | amd64, arm64 | ARM GCC cross tools¹ |
 | `dev-container-cpp` | C++ (Clang 20, CMake, vcpkg) | Ubuntu 24.04 | amd64, arm64 | Cortex-M/A |
 | `dev-container-cpp-system` | C++ (GCC 13, Clang 18, apt) | Ubuntu 24.04 | amd64, arm64 | Cortex-M/A |
 | `dev-container-go` | Go 1.26.1, protobuf, Bazelisk | Ubuntu 24.04 | amd64, arm64 | — |
@@ -65,7 +65,7 @@ current directory at `/workspace`.
 If your `.zshrc` has the convenience functions configured:
 
 ```bash
-adat     # Ada image — cd's to source root, launches container
+adat     # Ada image — changes to the source root and launches a container
 cppt     # C++ upstream image
 got      # Go image
 rustt    # Rust image
@@ -180,6 +180,7 @@ Pin at the most specific level available:
 - **APT packages** — use versioned package names where available
   (`postgresql-client-18`, `clang-20`); Ubuntu's archive rotates exact
   versions, so exact-version apt pinning is discouraged. The Ada image
+  instead pins APT to a dated Ubuntu snapshot (`UBUNTU_SNAPSHOT`) and
   records its exact package list in
   `/usr/share/doc/dev-containers/packages-<arch>.txt`.
 

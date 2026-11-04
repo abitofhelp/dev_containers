@@ -38,6 +38,7 @@ echo "=== dev-doctor ==="
 report "OS"                 sh -c '. /etc/os-release && echo "$PRETTY_NAME ($(uname -m))"'
 report "Alire"              alr --version
 report "Alire index"        cat "$doc_dir/alire-index-commit.txt"
+report "APT snapshot"       sh -c 'apt-config dump | sed -n "s/^APT::Snapshot \"\\(.*\\)\";$/\\1/p"'
 report "GNAT"               gnat --version
 report "GPRbuild"           gprbuild --version
 report "GNATprove"          gnatprove --version

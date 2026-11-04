@@ -69,13 +69,11 @@
 # - The Alire community index is pinned to a commit (ALIRE_INDEX_COMMIT)
 #   and does not refresh automatically (index.auto_update = 0). Run
 #   `alr index --update-all` to fetch newer crates deliberately.
-# - APT packages come from the live Ubuntu 26.04 archive, without
-#   `apt-get upgrade`. Ubuntu's snapshot service does not serve the arm64
-#   (ports) archive, so neither architecture uses snapshots; each image
-#   records its exact package list in
-#   /usr/share/doc/dev-containers/packages-<arch>.txt instead. Dated
-#   snapshots will be added to both architectures together once the
-#   snapshot service supports ports.
+# - APT packages come from a dated Ubuntu snapshot (UBUNTU_SNAPSHOT) on both
+#   architectures, so a rebuild installs the same package versions. Only
+#   ca-certificates is installed from the live archive first, because the
+#   snapshot service requires HTTPS. Each image also records its exact
+#   package list in /usr/share/doc/dev-containers/packages-<arch>.txt.
 #
 # Notes
 # -----
@@ -112,6 +110,7 @@ ARG PYTEST_VERSION=9.2.0
 ARG TYPST_SHA256_AMD64=a6d077d0a95eed5a2eba715b2dae06be954f624ccbf85758a03f389ded33118c
 ARG TYPST_SHA256_ARM64=5aa8d74a3d906e60ea12a66ac2f37f8eef1b14cbad7182a745e393a10c23dcee
 ARG TYPST_VERSION=0.15.1
+ARG UBUNTU_SNAPSHOT=20261103T000000Z
 ARG USER_GID=1000
 ARG USERNAME=dev
 ARG USER_UID=1000
@@ -130,6 +129,26 @@ ENV LANG=en_US.UTF-8 \
     TZ=UTC
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# ----------------------------------------------------------------------------
+# APT snapshot (reproducible package versions on amd64 and arm64)
+# ----------------------------------------------------------------------------
+# - Since Ubuntu 26.04, arm64 packages are served from archive.ubuntu.com,
+#   which the snapshot service covers; the base image's arm64 sources still
+#   name ports.ubuntu.com, so they are pointed at the main archive.
+# - The snapshot service is HTTPS-only, so ca-certificates is installed from
+#   the live archive before the snapshot is enabled.
+# - The snapshot setting stays in the image, so packages installed later
+#   with apt match the image. Delete /etc/apt/apt.conf.d/50snapshot to use
+#   the live archive instead.
+# ----------------------------------------------------------------------------
+RUN set -eux; \
+    sed -i 's#http://ports.ubuntu.com/ubuntu-ports/#http://archive.ubuntu.com/ubuntu/#' \
+        /etc/apt/sources.list.d/ubuntu.sources; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates; \
+    echo "APT::Snapshot \"${UBUNTU_SNAPSHOT}\";" > /etc/apt/apt.conf.d/50snapshot; \
+    rm -rf /var/lib/apt/lists/*
 
 # ----------------------------------------------------------------------------
 # Base packages (alphabetized within each group)

@@ -56,7 +56,12 @@ check "A1  dev-doctor reports every tool"       dev-doctor
 check "A1  GNAT is $EXPECT_GNAT"                bash -c "gnat --version | head -1 | grep -q 'GNAT $EXPECT_GNAT'"
 check "A1  GNATprove is $EXPECT_GNATPROVE"      bash -c "gnatprove --version | head -1 | grep -q '$EXPECT_GNATPROVE'"
 check "A1  alr selects gnat_native $EXPECT_GNAT" bash -c "alr toolchain | grep -E 'gnat_native +$EXPECT_GNAT +Default'"
-check "A1  the user's primary group matches the user name" bash -c '[ "$(id -gn)" = "$(id -un)" ]'
+# The base image's "ubuntu" group (GID 1000) must have been renamed. (The
+# user's primary group name can legitimately differ from the user name: on a
+# macOS host, GID 20 is "staff", which Ubuntu already names "dialout".)
+check "A1  the base image's ubuntu group was renamed" bash -c '! getent group ubuntu'
+check "A1  APT is pinned to a dated Ubuntu snapshot" \
+    bash -c 'apt-config dump | grep -Eq "^APT::Snapshot \"[0-9]{8}T[0-9]{6}Z\";"'
 
 # A2 — the native toolchain wins on PATH.
 check "A2  gcc/gnat/gnatmake resolve to Alire's GNAT" \

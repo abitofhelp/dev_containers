@@ -23,13 +23,14 @@ are rebuilt and republished under this version.
 - Ada image: move to Ubuntu 26.04 LTS (pinned by multi-architecture digest).
 - Ada image: Alire 2.1.1, GNAT (`gnat_native`) 16.1.0, and GPRbuild 26.0.1,
   installed at build time under `/opt/alire` (settings, cache, toolchains,
-  and install prefix), so that the toolchain no longer depends on `HOME` and
-  can no longer change at run time.
+  and install prefix). The default toolchain is selected at image build time
+  and does not depend on `HOME`; an Alire project may still select another
+  compiler when its dependency constraints require one.
 - Ada image: build and publish for **linux/amd64 and linux/arm64**. Alire,
   Typst, and their SHA-256 checksums are selected per architecture.
 - Ada image: pin the Alire community index to a recorded commit, with
-  automatic index refresh disabled. Run `alr index --update-all` to fetch
-  newer crates deliberately.
+  automatic index refresh disabled. Running `alr index --update-all` fetches
+  newer crates but departs from the image's recorded baseline.
 - Ada image: Python tools live in a virtual environment at `/opt/venv`
   (PEP 668); pytest 9.2.0.
 - Ada image: Typst 0.15.1.
@@ -41,8 +42,9 @@ are rebuilt and republished under this version.
 ### Added
 
 - Ada image: GNATprove 16.1.0 (installed with `alr install`).
-- Ada image: PostgreSQL client development from Ubuntu 26.04: `libpq-dev`
-  18.6 and `postgresql-client-18`.
+- Ada image: PostgreSQL 18 client development from Ubuntu 26.04
+  (`libpq-dev` and `postgresql-client-18`; 18.6 in this release's snapshot).
+  No database server is included.
 - Ada image: `dev-doctor`, which prints every tool version, and the
   `make -f ada/Makefile doctor` target.
 - Ada image: the exact APT package list for each architecture, at
@@ -55,13 +57,17 @@ are rebuilt and republished under this version.
     with `-lpq`;
   - an offline build from prefetched dependencies
     (`make -f ada/Makefile test-offline`).
-- USER_GUIDE: the Ada image refresh procedure, and the planned design for
-  APT snapshots. Ubuntu's snapshot service does not yet serve arm64.
+- Ada image: APT packages come from a dated Ubuntu snapshot
+  (`UBUNTU_SNAPSHOT`) on both architectures, so rebuilds install the same
+  package versions. Since Ubuntu 26.04, arm64 packages are served from the
+  main archive, which the snapshot service covers.
+- USER_GUIDE: the Ada image refresh procedure, a GNATprove example, and a
+  note on the PostgreSQL client tools.
 
 ### Fixed
 
-- Ada image: the developer user's primary group now matches the user name.
-  Ubuntu 26.04 ships an `ubuntu` group with GID 1000, which is renamed.
+- Ada image: Ubuntu 26.04 ships an `ubuntu` group with GID 1000, which is
+  now renamed to the developer user's group instead of being left behind.
 
 ### Deprecated
 
