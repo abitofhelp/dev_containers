@@ -269,13 +269,17 @@ extra `sudo` commands in `/etc/dev-containers/sudo-commands`.
 
 ### Runtime mode
 
-The entrypoint reads `/proc/self/uid_map`:
+The entrypoint reads the shape of `/proc/self/uid_map`. Its host IDs are
+relative to the parent user namespace (under rootless Podman, the user who
+runs Podman is UID 0 there), so they are not compared with `HOST_UID`
+directly:
 
 | Mapping | Runtime | Action |
 |---------|---------|--------|
-| Container UID 0 maps to host `HOST_UID` | Rootless nerdctl or rootless Docker | Create the account (home, prompt); stay UID 0, which is the host user |
-| Container `HOST_UID` maps to host `HOST_UID` | Rootful Docker, Docker Desktop, Podman `keep-id` | Create the account; drop to it via `gosu` |
-| Neither | `HOST_UID` is not the runtime's user | Exit 64 |
+| Identity map over the full ID range | Rootful Docker, Docker Desktop | Create the account; drop to it via `gosu` |
+| Container `HOST_UID` maps to 0, and container root does not | Rootless Podman with `--userns=keep-id` | Create the account; drop to it via `gosu` (it is the host user) |
+| Container root maps to a non-zero UID | Rootless nerdctl or rootless Docker | Create the account (home, prompt); stay UID 0, which is the host user. A note is printed if that UID is not `HOST_UID` |
+| Container root maps to 0 over a partial range | Rootless Podman without `keep-id` | Exit 64 with launch guidance |
 | Started as non-root | For example `docker run --user` | The matching account must already exist; otherwise exit 64 |
 
 ---

@@ -21,14 +21,21 @@
 # is missing or invalid, or if it conflicts with an existing account, the
 # container refuses to start (exit 64).  There is no fallback account.
 #
-# Runtime modes, chosen from /proc/self/uid_map:
+# Runtime modes, chosen from the shape of /proc/self/uid_map (its host IDs
+# are relative to the parent user namespace, so they are not compared with
+# HOST_UID across namespaces):
 #
-#   * Container UID 0 maps to HOST_UID on the host (rootless nerdctl or
-#     rootless Docker): stay as container UID 0, which is the host user.
-#     Dropping privileges would map to a subordinate UID that cannot write
-#     the bind-mounted workspace.
-#   * Container HOST_UID maps to HOST_UID on the host (rootful Docker, Docker
-#     Desktop, Podman with --userns=keep-id): drop to the account via gosu.
+#   * Identity map over the full ID range (rootful Docker, Docker Desktop):
+#     drop to the account via gosu.
+#   * Container HOST_UID maps to 0, the owner of the parent namespace, while
+#     container root does not (rootless Podman with --userns=keep-id): drop
+#     to the account via gosu, which is the host user.
+#   * Container root maps to a non-zero UID (rootless nerdctl or rootless
+#     Docker): stay as container UID 0, which is the host user. Dropping
+#     privileges would map to a subordinate UID that cannot write the
+#     bind-mounted workspace.
+#   * Container root maps to 0 over a partial range (rootless Podman without
+#     keep-id): refuse, and say how to launch.
 #
 # Images may declare extra groups for the user, one per line, in
 # /etc/dev-containers/user-groups, and extra commands the user may run with
@@ -99,7 +106,8 @@ validate_inputs() {
 # ----------------------------------------------------------------------------
 # User-namespace mapping
 # ----------------------------------------------------------------------------
-# Print the host UID that container UID $1 maps to, or nothing if unmapped.
+# Print the parent-namespace UID that container UID $1 maps to, or nothing
+# if it is unmapped.
 host_uid_of() {
     local cuid="$1"
     if [ ! -r /proc/self/uid_map ]; then
@@ -109,6 +117,34 @@ host_uid_of() {
     awk -v c="${cuid}" '
         c >= $1 && c < $1 + $3 { print $2 + (c - $1); exit }
     ' /proc/self/uid_map
+}
+
+# Succeed if the user namespace is the full identity map (no user namespace
+# in effect), as under rootful Docker and Docker Desktop.
+is_identity_map() {
+    [ ! -r /proc/self/uid_map ] && return 0
+    awk '$1 == 0 && $2 == 0 && $3 == 4294967295 { found = 1 } END { exit !found }' /proc/self/uid_map
+}
+
+# Decide how the session runs: "drop" (gosu to the account) or "stay"
+# (remain container UID 0, which is the host user). Exits on an unsupported
+# mapping.
+choose_runtime_mode() {
+    local root_maps_to user_maps_to
+    root_maps_to="$(host_uid_of 0)"
+    user_maps_to="$(host_uid_of "${HOST_UID}")"
+    if is_identity_map; then
+        RUNTIME_MODE="drop"
+    elif [ "${user_maps_to}" = "0" ] && [ "${root_maps_to}" != "0" ]; then
+        RUNTIME_MODE="drop"
+    elif [ -n "${root_maps_to}" ] && [ "${root_maps_to}" != "0" ]; then
+        RUNTIME_MODE="stay"
+        if [ "${root_maps_to}" != "${HOST_UID}" ]; then
+            log_info "Note: container root maps to host UID ${root_maps_to}, not HOST_UID ${HOST_UID}; files are written as host UID ${root_maps_to}."
+        fi
+    else
+        die_usage "This user-namespace mapping is not supported (container root maps to UID 0 over a partial range). With rootless Podman, start the container with --userns=keep-id --user 0:0."
+    fi
 }
 
 # ----------------------------------------------------------------------------
@@ -248,11 +284,10 @@ setup_rust_runtime_home() {
 export IN_CONTAINER=1
 validate_inputs
 
-ROOT_MAPS_TO="$(host_uid_of 0)"
-if [ "${ROOT_MAPS_TO}" != "0" ]; then
-    export CONTAINER_RUNTIME="rootless"
-else
+if is_identity_map; then
     export CONTAINER_RUNTIME="docker"
+else
+    export CONTAINER_RUNTIME="rootless"
 fi
 
 if [ "$(id -u)" != "0" ]; then
@@ -272,6 +307,7 @@ if [ "$(id -u)" != "0" ]; then
     exec "$@"
 fi
 
+choose_runtime_mode
 ensure_group
 ensure_user
 ensure_home
@@ -280,14 +316,10 @@ write_sudoers
 setup_session_env
 setup_rust_runtime_home
 
-if [ "${ROOT_MAPS_TO}" = "${HOST_UID}" ]; then
+if [ "${RUNTIME_MODE}" = "stay" ]; then
     # Rootless runtime: container UID 0 is the host user.  Stay UID 0 so the
     # bind-mounted workspace remains writable.
     exec "$@"
-fi
-
-if [ "$(host_uid_of "${HOST_UID}")" != "${HOST_UID}" ]; then
-    die_usage "HOST_UID ${HOST_UID} is not mapped to host UID ${HOST_UID} by this container runtime, and container root maps to host UID ${ROOT_MAPS_TO}. Check that HOST_UID is the UID of the user running the container runtime."
 fi
 
 exec gosu "${HOST_USER}" "$@"
