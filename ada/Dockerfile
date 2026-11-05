@@ -77,12 +77,12 @@
 #
 # Notes
 # -----
-# - User identity is adapted at runtime by entrypoint.sh, not baked in at
-#   build time. The build-time user (dev:1000:1000) is a fallback for CI
-#   and Kubernetes environments where no HOST_* variables are passed.
+# - The image contains no human account. At startup, entrypoint.sh creates
+#   exactly one from the required HOST_USER, HOST_UID, and HOST_GID; there
+#   is no fallback account.
 # - Alire's settings, cache, toolchains, and install prefix live under
 #   /opt/alire (ALIRE_SETTINGS_DIR), so they do not depend on HOME and
-#   are shared by whichever user the entrypoint selects.
+#   are shared by the runtime account.
 # - GNU Make is installed explicitly because many projects use Makefiles as
 #   the orchestration layer around alr, gprbuild, tests, formatting, and
 #   scripts.
@@ -111,19 +111,15 @@ ARG TYPST_SHA256_AMD64=a6d077d0a95eed5a2eba715b2dae06be954f624ccbf85758a03f389de
 ARG TYPST_SHA256_ARM64=5aa8d74a3d906e60ea12a66ac2f37f8eef1b14cbad7182a745e393a10c23dcee
 ARG TYPST_VERSION=0.15.1
 ARG UBUNTU_SNAPSHOT=20261103T000000Z
-ARG USER_GID=1000
-ARG USERNAME=dev
-ARG USER_UID=1000
 
 # ----------------------------------------------------------------------------
 # Environment variables (alphabetized)
 # ----------------------------------------------------------------------------
-ENV ALIRE_SETTINGS_DIR=/opt/alire/settings \
-    HOME=/home/${USERNAME}
+ENV ALIRE_SETTINGS_DIR=/opt/alire/settings
 ENV LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8 \
-    PATH=${HOME}/.local/bin:/opt/venv/bin:/opt/alire/prefix/bin:/opt/alire/gnat/bin:/opt/alire/gprbuild/bin:/usr/local/bin:${PATH} \
+    PATH=/opt/venv/bin:/opt/alire/prefix/bin:/opt/alire/gnat/bin:/opt/alire/gprbuild/bin:/usr/local/bin:${PATH} \
     SHELL=/usr/bin/zsh \
     TERM=xterm-256color \
     TZ=UTC
@@ -225,30 +221,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN ar rcs /usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/libiconv.a
 
 # ----------------------------------------------------------------------------
-# Create developer user
+# No built-in human account
 # ----------------------------------------------------------------------------
-# Ubuntu 26.04 ships an "ubuntu" user and group with ID 1000; both are
-# renamed to the developer user.
+# The Ubuntu base image ships an "ubuntu" account and group (ID 1000). Both
+# are removed: the image contains no human account. At startup,
+# entrypoint.sh creates exactly one account from the required HOST_USER,
+# HOST_UID, and HOST_GID.
 # ----------------------------------------------------------------------------
 RUN set -eux; \
-    if ! getent group "${USER_GID}" >/dev/null; then \
-        groupadd --gid "${USER_GID}" "${USERNAME}"; \
-    elif [ "$(getent group "${USER_GID}" | cut -d: -f1)" != "${USERNAME}" ] \
-         && ! getent group "${USERNAME}" >/dev/null; then \
-        groupmod --new-name "${USERNAME}" "$(getent group "${USER_GID}" | cut -d: -f1)"; \
-    fi; \
-    if id -u "${USERNAME}" >/dev/null 2>&1; then \
-        usermod --uid "${USER_UID}" --gid "${USER_GID}" --shell /usr/bin/zsh "${USERNAME}"; \
-    elif getent passwd "${USER_UID}" >/dev/null; then \
-        EXISTING_USER="$(getent passwd "${USER_UID}" | cut -d: -f1)"; \
-        usermod --login "${USERNAME}" --home "/home/${USERNAME}" --move-home \
-            --gid "${USER_GID}" --shell /usr/bin/zsh "${EXISTING_USER}"; \
-    else \
-        useradd --uid "${USER_UID}" --gid "${USER_GID}" -m -s /usr/bin/zsh "${USERNAME}"; \
-    fi; \
-    usermod -aG sudo "${USERNAME}"; \
-    echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/${USERNAME}"; \
-    chmod 0440 "/etc/sudoers.d/${USERNAME}"
+    if getent passwd ubuntu >/dev/null; then userdel --remove ubuntu 2>/dev/null || userdel ubuntu; fi; \
+    if getent group ubuntu >/dev/null; then groupdel ubuntu; fi; \
+    rm -rf /home/ubuntu; \
+    install -d -m 0755 /etc/dev-containers; \
+    printf '%s\n' /opt/venv/bin/pip /opt/venv/bin/pip3 > /etc/dev-containers/sudo-commands
 
 # ----------------------------------------------------------------------------
 # License
@@ -290,6 +275,11 @@ RUN set -eux; \
 #   that a project requires) without changing the installed ones. Git
 #   trusts the root-owned index repository for every user (safe.directory),
 #   so `alr index --update-all` and index branch detection work.
+# - Post-fetch flags: when a crate's solution includes gnat_native or
+#   gprbuild, Alire records `alire/flags/post_fetch_done` inside the
+#   toolchain directory on first use, even though these releases declare no
+#   actions. A throwaway crate depending on both is built here, before the
+#   toolchains become read-only, so Alire writes those flags itself (#5).
 # ----------------------------------------------------------------------------
 RUN set -eux; \
     mkdir -p /opt/alire/cache /opt/alire/prefix /opt/alire/settings /opt/alire/toolchains; \
@@ -315,6 +305,14 @@ RUN set -eux; \
     test -x /opt/alire/prefix/bin/gnatprove; \
     git -C "${INDEX_REPO}" rev-parse HEAD > /usr/share/doc/dev-containers/alire-index-commit.txt; \
     git config --system --add safe.directory "${INDEX_REPO}"; \
+    ( cd /tmp \
+      && alr --non-interactive init --bin postfetch_warmup \
+      && cd postfetch_warmup \
+      && alr --non-interactive with "gnat_native=${GNAT_VERSION}" "gprbuild=${GPRBUILD_VERSION}" \
+      && alr --non-interactive build ); \
+    rm -rf /tmp/postfetch_warmup; \
+    test -f /opt/alire/gnat/alire/flags/post_fetch_done; \
+    test -f /opt/alire/gprbuild/alire/flags/post_fetch_done; \
     chown -R root:root /opt/alire; \
     chmod -R a+rX,go-w /opt/alire; \
     chmod -R a+rwX /opt/alire/settings; \
@@ -352,22 +350,15 @@ RUN dpkg-query -W -f '${Package}\t${Version}\t${Architecture}\n' \
       > "/usr/share/doc/dev-containers/packages-$(dpkg --print-architecture).txt"
 
 # ----------------------------------------------------------------------------
-# Developer home
+# Shell template for the runtime account (/etc/skel)
 # ----------------------------------------------------------------------------
-USER ${USERNAME}
-WORKDIR ${HOME}
-
-RUN mkdir -p \
-    "${HOME}/.docker/completions" \
-    "${HOME}/.local/bin" \
-    "${HOME}/workspace"
-
-COPY --chown=${USER_UID}:${USER_GID} ada/.zshrc ${HOME}/.zshrc
+RUN mkdir -p /etc/skel/.docker/completions /etc/skel/.local/bin
+COPY ada/.zshrc /etc/skel/.zshrc
 
 # ----------------------------------------------------------------------------
 # Entrypoint, diagnostics, and runtime defaults
 # ----------------------------------------------------------------------------
-# The entrypoint runs as root so it can create/adapt the user at startup.
+# The entrypoint runs as root so it can create the account at startup.
 # In rootful runtimes it drops privileges via gosu.  In rootless runtimes
 # container UID 0 is already the unprivileged host user.
 # ----------------------------------------------------------------------------

@@ -35,7 +35,6 @@ help:
 	@echo "  build                Build the image"
 	@echo "  build-no-cache       Build the image without cache"
 	@echo "  run                  Run the image interactively"
-	@echo "  run-root             Run as root, bypassing the entrypoint (diagnostic)"
 	@echo "  run-shell            Open zsh in the user home directory"
 	@echo "  test                 Smoke test (nerdctl rootless)"
 	@echo "  test-docker          Smoke test (docker rootful)"

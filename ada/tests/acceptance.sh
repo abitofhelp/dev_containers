@@ -10,8 +10,13 @@
 # Run inside the image with the ada/ directory mounted at /workspace:
 #   bash tests/acceptance.sh
 #
-# Covers A1–A8 of the modernization plan (issue #3). The offline test (A10)
-# needs two container runs and lives in the Makefile (test-offline).
+# Covers A1–A9 and the in-container identity checks (I1–I4, issue #6). The
+# offline test (A10) needs two container runs and lives in the Makefile
+# (test-offline); launch-time identity behaviour is tested from the host by
+# tests/identity.sh.
+#
+# Optional: RUN_ALT_COMPILER=1 also downloads GNAT 15 for a crate that
+# requires it (about 1 GB; needs the network).
 # ============================================================================
 
 set -u
@@ -44,22 +49,38 @@ check() {
 
 # Copy a fixture to scratch space so the mounted tree stays clean.
 stage() {
-    rm -rf "$WORK/$1"
+    rm -rf "${WORK:?}/$1"
     cp -r "$2" "$WORK/$1"
     echo "$WORK/$1"
 }
 
-echo "=== Ada image acceptance (A1–A8) ==="
+echo "=== Ada image acceptance (A1–A9, I1–I4) ==="
+
+# I1–I4 — runtime identity (issue #6). In rootless runtimes the session runs
+# as container UID 0, which is the host user, so the UID and sudo checks
+# apply only to non-root sessions.
+ROOTLESS=0; [ "$(id -u)" = 0 ] && ROOTLESS=1
+check "I1  the session account matches HOST_USER, HOST_UID, and HOST_GID" \
+    bash -c 'getent passwd "$HOST_USER" | awk -F: -v u="$HOST_UID" -v g="$HOST_GID" "\$3 == u && \$4 == g { ok = 1 } END { exit !ok }"'
+if [ "$ROOTLESS" = 0 ]; then
+    check "I1  the session runs as that account" \
+        bash -c '[ "$(id -un)" = "$HOST_USER" ] && [ "$(id -u)" = "$HOST_UID" ] && [ "$(id -g)" = "$HOST_GID" ]'
+fi
+check "I2  no dev or ubuntu account exists" \
+    bash -c '! getent passwd dev && ! getent passwd ubuntu && ! getent group ubuntu'
+check "I3  exactly one account has a home under /home" \
+    bash -c '[ "$(getent passwd | awk -F: "\$6 ~ /^\/home\// { n++ } END { print n+0 }")" = 1 ]'
+if [ "$ROOTLESS" = 0 ]; then
+    check "I4  sudo allows apt-get and the venv pip" \
+        bash -c 'sudo -n apt-get --version >/dev/null && sudo -n /opt/venv/bin/pip --version >/dev/null'
+    check "I4  sudo refuses other commands" bash -c '! sudo -n true 2>/dev/null'
+fi
 
 # A1 — versions.
 check "A1  dev-doctor reports every tool"       dev-doctor
 check "A1  GNAT is $EXPECT_GNAT"                bash -c "gnat --version | head -1 | grep -q 'GNAT $EXPECT_GNAT'"
 check "A1  GNATprove is $EXPECT_GNATPROVE"      bash -c "gnatprove --version | head -1 | grep -q '$EXPECT_GNATPROVE'"
 check "A1  alr selects gnat_native $EXPECT_GNAT" bash -c "alr toolchain | grep -E 'gnat_native +$EXPECT_GNAT +Default'"
-# The base image's "ubuntu" group (GID 1000) must have been renamed. (The
-# user's primary group name can legitimately differ from the user name: on a
-# macOS host, GID 20 is "staff", which Ubuntu already names "dialout".)
-check "A1  the base image's ubuntu group was renamed" bash -c '! getent group ubuntu'
 # The installed tools are read-only for the developer user. In rootless
 # runtimes the developer is UID 0 (the host user), which can write anyway.
 check "A1  the installed toolchain is read-only for the developer user" \
@@ -72,6 +93,18 @@ check "A2  gcc/gnat/gnatmake resolve to Alire's GNAT" \
     bash -c 'for t in gcc gnat gnatmake; do [ "$(command -v $t)" = "/opt/alire/gnat/bin/$t" ] || exit 1; done'
 check "A2  gprbuild resolves to Alire's GPRbuild" \
     bash -c '[ "$(command -v gprbuild)" = /opt/alire/gprbuild/bin/gprbuild ]'
+
+# A9 — a crate whose solution includes the preinstalled gnat_native and
+# gprbuild builds as the session user (issue #5). No download is needed.
+check "A9  a crate depending on gnat and gprbuild builds" \
+    bash -c "cd '$WORK' && alr -n init --bin gnatdep >/dev/null && cd gnatdep \
+             && alr -n with gnat_native=$EXPECT_GNAT gprbuild >/dev/null && alr -n build"
+if [ "${RUN_ALT_COMPILER:-0}" = 1 ]; then
+    check "A9  a crate requiring GNAT 15 downloads it and builds" \
+        bash -c "cd '$WORK' && alr -n init --bin gnat15dep >/dev/null && cd gnat15dep \
+                 && alr -n with 'gnat_native^15' >/dev/null && alr -n build \
+                 && alr -n exec -- gnat --version | head -1 | grep -q 'GNAT 15'"
+fi
 
 # A3 — hello_ada builds and runs through Alire.
 dir="$(stage hello_ada "$EXAMPLE_DIR")"
