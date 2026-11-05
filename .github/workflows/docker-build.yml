@@ -76,8 +76,10 @@ jobs:
 
       - name: Runtime identity tests (Podman keep-id)
         run: |
-          docker save dev-container-ada:ci | podman load
-          bash tests/identity.sh localhost/dev-container-ada:ci podman
+          loaded="$(docker save dev-container-ada:ci | podman load | sed -n 's/^Loaded image: //p' | head -1)"
+          test -n "$loaded"
+          echo "Podman image: $loaded"
+          bash tests/identity.sh "$loaded" podman
 
       - name: Acceptance test A10 (offline build from prefetched dependencies)
         run: make -f ada/Makefile test-offline CONTAINER_CLI=docker IMAGE_NAME=dev-container-ada:ci
