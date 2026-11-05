@@ -8,8 +8,8 @@
 
 # User Guide: dev_containers
 
-**Version**: 1.2.0
-**Date**: 2026-11-04
+**Version**: 2.0.0
+**Date**: 2026-11-05
 **Authors**: Michael Gardner, Claude (Anthropic), GPT (OpenAI)
 
 ---
@@ -30,11 +30,13 @@ the embedded tools listed in section 6.
 - The toolchain lives under `/opt/alire` (Alire's settings, cache,
   toolchains, and install prefix), so it does not depend on `HOME`.
 - The installed GNAT, GPRbuild, GNATprove, and Python virtual environment
-  are read-only for the developer user. Alire's settings, index, and cache
+  are read-only for the session user. Alire's settings, index, and cache
   are writable, and Alire can add other toolchains that a project requires
-  (they are installed beside the default ones). To add Python packages, use
-  `sudo /opt/venv/bin/pip install …` or create your own virtual
-  environment.
+  (they are installed beside the default ones). An added toolchain is
+  downloaded on first use (GNAT is about 1 GB) and, because containers are
+  normally started with `--rm`, again in each new container. For Python
+  packages, prefer a project virtual environment; `sudo /opt/venv/bin/pip
+  install …` adds them to the shared one.
 - The Alire index is pinned to the commit recorded in
   `/usr/share/doc/dev-containers/alire-index-commit.txt` and does not
   refresh automatically. `alr index --update-all` fetches newer crates, but
@@ -50,7 +52,8 @@ the embedded tools listed in section 6.
 - **Known limitation (libadalang):** the current Alire release of `libgpr2`
   requires a GNAT earlier than 16. Projects that use `libadalang` (or
   `libgpr2`) therefore get an Alire-selected GNAT 15.x, downloaded on first
-  use, instead of the image's GNAT 16.1.0. Check the selected compiler with
+  use (see the added-toolchain note above), instead of the image's GNAT
+  16.1.0. Check the selected compiler with
   `alr exec -- gnat --version`. This will be revisited when updated upstream
   packages are published.
 - **PostgreSQL:** `psql` and libpq (`libpq-dev`) are installed, but no
@@ -79,6 +82,15 @@ are published; its existing GHCR tags remain available. Use
 The default uses upstream LLVM and Kitware repositories for the latest
 toolchain.  The system image uses only Ubuntu apt packages for supply-chain
 auditability.
+
+**vcpkg (`dev-container-cpp`):** use manifest mode (a `vcpkg.json` in the
+project, with CMake's `-DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake`).
+Dependencies install into the project's `vcpkg_installed/`, and the binary
+cache is `~/.cache/vcpkg/archives`. The vcpkg checkout in `/opt/vcpkg` is
+read-only; the session user belongs to the `vcpkg` group, which may write
+only the lock file and the `buildtrees`, `packages`, and `downloads`
+scratch directories. Classic-mode `vcpkg install` into the shared tree is
+not supported.
 
 ### 0.3 Go
 
@@ -185,58 +197,86 @@ sudo usermod -aG docker "$USER"
 sudo apt-get install -y podman crun
 ```
 
-Podman rootless uses `--userns=keep-id` to map the host user directly.
-See the `podman-run` Makefile targets.
+Podman rootless runs with `--userns=keep-id --user 0:0` and the three
+`HOST_*` variables: the host UID keeps its value in the container, and the
+entrypoint starts as container root (a subordinate UID, not host root),
+creates the account, and drops to it. See the `podman-run` Makefile targets.
 
-### 1.5 Windows
+### 1.5 Windows 11
 
-Install Docker Desktop.  The Makefile auto-detects `docker` on Windows.
-For WSL2, the environment behaves like Linux — nerdctl is preferred.
+Windows is supported **through WSL2 only**:
+
+1. Install Docker Desktop with the WSL2 back end, and a WSL2 distribution
+   (for example, Ubuntu).
+2. Open a WSL2 shell and keep your source in the WSL file system (for
+   example `~/src/my_project`), not on a mounted Windows drive (`/mnt/c/...`).
+3. Launch from the project directory, exactly as on Linux.
+
+WSL2 provides the POSIX user and group IDs that the containers require.
+Launching from PowerShell or CMD, or with the source on `C:\`, is not
+supported: there is no POSIX UID or GID, file ownership does not map, and
+builds are slow. The launcher (`container_run.py`) stops with a message in
+that case.
 
 ---
 
 ## 2. Design Goals
 
 1. **One image, any developer** — pull from GHCR and run.  User identity
-   is provided at run time, not baked in at build time.
+   is declared at run time and required; no account is baked in at build
+   time.
 2. **Bind-mounted source** — host project directory is mounted into the
    container.  Edits inside are live on the host.
 3. **Correct file permissions** — container process runs with the host
    user's UID/GID.
-4. **Works everywhere** — rootless nerdctl, rootful Docker, Podman,
-   Kubernetes.
-5. **Secure by default** — non-root in rootful runtimes; UID 0 is
-   unprivileged in rootless runtimes.
+4. **Works on every supported host** — Docker (Linux, macOS, Windows 11
+   through WSL2), rootless nerdctl, and rootless Podman. Kubernetes is
+   possible but not tested.
+5. **Secure by default** — no unowned accounts; non-root in rootful
+   runtimes; UID 0 is unprivileged in rootless runtimes; `sudo` limited to
+   package installation.
 
 ---
 
-## 3. Runtime-Adaptive User Identity
+## 3. Runtime Identity
 
-The image ships with a fallback user (`dev:1000:1000`).  At run time,
-`entrypoint.sh` reads host identity from environment variables:
+The image contains no human account.  At startup, `entrypoint.sh` creates
+exactly one from the identity the launcher declares in three **required**
+environment variables (the container does not authenticate anyone; that
+happens on the host):
 
 ```
 Host                          Container
 ─────                         ─────────
-$(whoami)  → HOST_USER  ───→  entrypoint.sh creates user
-$(id -u)   → HOST_UID   ───→  with matching UID
-$(id -g)   → HOST_GID   ───→  and matching GID
+$(whoami)  → HOST_USER  ───→  entrypoint.sh creates the account
+$(id -u)   → HOST_UID   ───→  with this UID
+$(id -g)   → HOST_GID   ───→  and this primary GID
 $(pwd)     → -v mount   ───→  /workspace (bind mount)
 ```
 
-### Rootless detection
+### Validation
 
-The entrypoint checks `/proc/self/uid_map` to determine if container
-UID 0 maps to a non-zero host UID (rootless) or to real root (rootful).
-
-### Privilege drop decision
-
-| Condition | Action |
+| Condition | Result |
 |-----------|--------|
-| Rootful + HOST_* set | Create user, drop to HOST_UID via `gosu` |
-| Rootless + HOST_* set | Create user for home/prompt, stay UID 0 |
-| No HOST_* vars | Fall through to default user (`dev`) |
-| Already non-root (K8s) | Run directly |
+| A variable is missing, or a value is invalid (`HOST_UID=0`, `HOST_USER=root`, a name with uppercase letters or spaces) | Exit 64 with launch guidance |
+| An account with the same name, UID, and GID exists (a restarted container) | Reused |
+| The name or the UID belongs to a different account | Exit 64 |
+| A group with `HOST_GID` exists | Reused under its own name |
+
+Per-user files come from `/etc/skel`. Images may list extra groups for the
+user in `/etc/dev-containers/user-groups` (the C++ image lists `vcpkg`) and
+extra `sudo` commands in `/etc/dev-containers/sudo-commands`.
+
+### Runtime mode
+
+The entrypoint reads `/proc/self/uid_map`:
+
+| Mapping | Runtime | Action |
+|---------|---------|--------|
+| Container UID 0 maps to host `HOST_UID` | Rootless nerdctl or rootless Docker | Create the account (home, prompt); stay UID 0, which is the host user |
+| Container `HOST_UID` maps to host `HOST_UID` | Rootful Docker, Docker Desktop, Podman `keep-id` | Create the account; drop to it via `gosu` |
+| Neither | `HOST_UID` is not the runtime's user | Exit 64 |
+| Started as non-root | For example `docker run --user` | The matching account must already exist; otherwise exit 64 |
 
 ---
 
@@ -283,8 +323,9 @@ repository.  This Python script handles:
 
 - Platform CLI detection (macOS → docker, Linux → nerdctl, Windows → docker)
 - Sequential container naming (`image-1`, `-2`, `-3`)
-- HOST_UID / HOST_GID / HOST_USER passthrough
-- Podman `--userns=keep-id` support
+- The required HOST_UID / HOST_GID / HOST_USER, for every CLI (it stops on
+  native Windows and asks for a WSL2 shell)
+- Podman `--userns=keep-id --user 0:0`
 - Linux linger and XDG_RUNTIME_DIR checks
 
 ---
@@ -396,23 +437,41 @@ Go does not include embedded support.
 
 ## 7. Security Model
 
-### Rootless mode (nerdctl, Podman)
+### No unowned accounts
+
+The image has no built-in human account (the Ubuntu base image's `ubuntu`
+account is removed at build time), and there is no fallback: the only
+account is the one created from the declared identity.
+
+### Rootless nerdctl
 
 Container UID 0 maps to the unprivileged host user via the user namespace.
-No privilege escalation is possible.  The entrypoint stays as UID 0 because
-dropping to HOST_UID would map to an unmapped subordinate UID and break
-bind-mount access.
+The entrypoint stays as UID 0 because dropping to HOST_UID would map to a
+subordinate UID and break bind-mount access.
 
-### Rootful mode (Docker)
+### Rootful Docker and Podman `keep-id`
 
-The entrypoint drops to HOST_UID via `gosu`.  The container process runs
-as a real non-root user.
+The entrypoint drops to HOST_UID via `gosu`.  The session runs as a real
+non-root user.
 
-### Passwordless sudo
+### Scoped sudo
 
-Kept intentionally.  Development containers need `sudo` for ad-hoc package
-installation.  In rootless mode, `sudo` inside the container does not grant
-any additional host-level access.
+The session user may run only the package managers with `sudo`, without a
+password: `apt-get` and `apt`, plus `pip` (`/opt/venv/bin/pip` in the Ada
+image, `/usr/bin/pip3` elsewhere). The rule is written to
+`/etc/sudoers.d/dev-tools` at startup and checked with `visudo`.
+
+This is an operational guardrail, **not a security boundary**: installing a
+package runs its scripts as root, so a user who can install packages can
+obtain root inside the container. The container is the boundary. Changes
+that need root belong in the image or in a derived image (see "Extending
+the Images" in the README).
+
+### Maintainer diagnostics
+
+The everyday launcher and Makefile targets offer no root shell. To inspect
+an image as root, use the runtime directly, for example
+`docker run -it --rm --entrypoint bash -u 0 <image>`.
 
 ---
 
@@ -466,8 +525,9 @@ sooner when an Ubuntu security notice affects a package in the image:
    previous release's, and summarize the security-relevant changes in the
    pull request.
 3. Run the acceptance tests on both architectures: `make -f ada/Makefile
-   test` (A1–A8), `make -f ada/Makefile test-offline` (A10), and
-   build representative consumer projects (A11; see issue #3).
+   test` (A1–A9, I1–I4), `make -f ada/Makefile test-offline` (A10), and
+   `tests/identity.sh <image>` (the launch contract), and build
+   representative consumer projects (A11; see issue #3).
 4. Merge, then publish through the normal release process. Record the
    digest currently behind `latest` first, so that the change can be rolled
    back.
@@ -494,19 +554,28 @@ the `HYBRID_SCRIPTS_PYTHON` environment variable if your clone is elsewhere.
 
 ---
 
-## 10. Kubernetes Deployment
+## 10. Kubernetes (Not Tested)
 
-All images are Kubernetes-compatible out of the box:
+The images could serve as hosted workspaces or CI runners on a cluster. This
+has not been tested. A pod would need to:
+
+- set `HOST_USER`, `HOST_UID`, and `HOST_GID` as environment variables;
+- start the container as root (`runAsUser: 0`), so the entrypoint can create
+  the account and drop to it with `gosu`. A pod that starts as non-root
+  fails unless the matching account already exists in a derived image;
+- set `fsGroup` to `HOST_GID` so mounted volumes are writable.
 
 ```yaml
 securityContext:
-  runAsUser: 1000
-  runAsGroup: 1000
-  fsGroup: 1000
-  runAsNonRoot: true
+  runAsUser: 0
+  fsGroup: 1001
 containers:
   - name: dev
-    image: ghcr.io/abitofhelp/dev-container-ada:latest
+    image: ghcr.io/abitofhelp/dev-container-ada:v2.0.0
+    env:
+      - { name: HOST_USER, value: "developer" }
+      - { name: HOST_UID,  value: "1001" }
+      - { name: HOST_GID,  value: "1001" }
     workingDir: /workspace
     volumeMounts:
       - name: source
@@ -517,9 +586,8 @@ volumes:
       claimName: source-code
 ```
 
-`fsGroup: 1000` ensures the volume is writable.  Kubernetes manifests and
-Helm charts are not included — teams should create these per their cluster
-policies.
+Kubernetes manifests and Helm charts are not included; teams should create
+them according to their cluster policies.
 
 ---
 

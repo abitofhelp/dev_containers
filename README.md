@@ -55,10 +55,20 @@ cd ~/Ada/github.com/abitofhelp/my_project
 make -f ~/containers/dev_containers/ada/Makefile run
 ```
 
-The Makefile auto-detects the container CLI (docker on macOS/Windows, nerdctl
-on Linux), generates a sequential container name (`dev-container-ada-1`,
-`-2`, etc.), passes host identity for runtime user adaptation, and mounts your
-current directory at `/workspace`.
+The Makefile auto-detects the container CLI (docker on macOS and WSL2,
+nerdctl on Linux), generates a sequential container name
+(`dev-container-ada-1`, `-2`, etc.), passes your host identity (required; see
+[Runtime Identity](#runtime-identity)), and mounts your current directory at
+`/workspace`.
+
+To run an image directly, pass the three identity variables yourself:
+
+```bash
+docker run -it --rm \
+  -e HOST_USER="$(whoami)" -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+  -v "$PWD":/workspace -w /workspace \
+  ghcr.io/abitofhelp/dev-container-ada:latest
+```
 
 ### 3. Or use the shell aliases
 
@@ -79,6 +89,36 @@ rustt    # Rust image
 | `cppst` | dev-container-cpp-system (APT) | yes | yes |
 | `got` | dev-container-go | yes | yes |
 | `rustt` | dev-container-rust | yes | yes |
+
+## Platform Support
+
+Every image is a **Linux 64-bit container** on every host, so the tools in it
+build and test **Linux binaries**. Binaries for other operating systems are
+built elsewhere (for example, natively on GitHub's Windows runners).
+
+| Host | Architecture | Container runtime | Status |
+|------|--------------|-------------------|--------|
+| Linux (Ubuntu 24.04 or later) | amd64, arm64 | Docker Engine | Supported; tested in CI |
+| Linux | amd64, arm64 | Rootless nerdctl | Supported; used by the maintainers; not tested in CI |
+| Linux | amd64, arm64 | Rootless Podman | Supported; identity tests run in CI |
+| macOS (Apple Silicon) | arm64 | Docker Desktop | Supported; the maintainers' daily environment |
+| macOS (Intel) | amd64 | Docker Desktop | Expected to work; not tested |
+| Windows 11 | amd64 | Docker Desktop with the WSL2 back end | Supported through WSL2 only; not tested |
+| Windows 11, launched from PowerShell or CMD with the source on `C:\` | — | — | Not supported |
+
+**Windows 11:** open a WSL2 shell, keep your source inside the WSL file
+system (for example `~/src/my_project`, not `/mnt/c/...`), and launch from the
+project directory. WSL2 provides the POSIX user and group IDs the containers
+require, file ownership on the mount behaves as on Linux, and builds are much
+faster than on a mounted Windows drive. The images run under emulation on
+Windows on ARM; there are no native Windows on ARM images.
+
+**Kubernetes (not tested):** the images could serve as hosted workspaces or
+CI runners on a cluster. The pod must set `HOST_USER`, `HOST_UID`, and
+`HOST_GID` as environment variables and start the container as root
+(`runAsUser: 0`), so the entrypoint can create the account and then drop to
+it; `fsGroup` should match `HOST_GID` for volume access. This setup has not
+been tested.
 
 ## Why These Containers Are Useful
 
@@ -205,13 +245,78 @@ Existing `dev-container-ada-system` tags (including `v1.1.0` and
 repository, unchanged, until consumers have moved; they will be removed in a
 later release.
 
+## Extending the Images
+
+The published images contain only freely redistributable software. To add a
+tool, including vendor tools that require accepting a license (for example,
+an MCU vendor's programmer or an FPGA vendor's suite), build your own image
+on top of a published one:
+
+```dockerfile
+FROM ghcr.io/abitofhelp/dev-container-cpp:v2.0.0
+
+# Root-requiring installation belongs here, not in a running container.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends <package> \
+ && rm -rf /var/lib/apt/lists/*
+```
+
+Pin the base image by version (or digest). A derived image inherits the
+toolchain, the required runtime identity, the scoped `sudo` rule, and the
+entrypoint unchanged.
+
+**Licensing:** whoever builds a derived image is responsible for complying
+with the licenses of the tools they add, and must not redistribute the image
+unless those licenses allow it. This is a statement of policy, not legal
+advice.
+
 ## How It Works
 
-### Runtime-Adaptive User Identity
+### Runtime Identity
 
-The image ships with a fallback user (`dev:1000:1000`) for CI and Kubernetes.
-At run time, `entrypoint.sh` reads `HOST_USER`, `HOST_UID`, and `HOST_GID`
-from environment variables and adapts the in-container user to match.
+The images contain **no built-in human account**. At startup, `entrypoint.sh`
+creates exactly one account from three **required** environment variables:
+
+| Variable | Meaning |
+|----------|---------|
+| `HOST_USER` | User name (lowercase letters, digits, `_`, `-`; not `root`) |
+| `HOST_UID` | Numeric UID (not 0) |
+| `HOST_GID` | Numeric GID |
+
+The variables *declare* the identity of the person who launched the
+container. They are supplied by the launcher (the Makefiles,
+`container_run.py`, or your own `docker run`); the container does not
+authenticate anyone. Authentication happens on the host.
+
+- If any variable is missing or invalid, the container **refuses to start**
+  (exit status 64) and prints how to launch it. There is no fallback account.
+- An existing account is reused only if its name, UID, and GID all match, as
+  when a stopped container is restarted. Any conflicting account stops the
+  container.
+- An existing group with `HOST_GID` is reused under its own name (for
+  example, macOS's GID 20 is `dialout` in Ubuntu).
+- Per-user settings come from `/etc/skel`.
+
+**sudo:** the account may run the package managers with `sudo` and no
+password: `apt-get` and `apt` in every image, plus `pip` (`/opt/venv/bin/pip`
+in the Ada image; `/usr/bin/pip3` elsewhere). This is a guardrail against
+accidental system changes, **not a security boundary**: installing packages
+runs code as root, so the container itself is the boundary. Configuration
+that needs root belongs in the image, or in a [derived image](#extending-the-images).
+For ordinary Python packages, prefer a project virtual environment.
+
+**Opening another shell in a running container:**
+
+| Runtime | Command |
+|---------|---------|
+| Docker, Docker Desktop, Podman | `docker exec -it -u "$(id -u)" <container> zsh` (or `podman exec`) |
+| Rootless nerdctl | `nerdctl exec -it <container> zsh` (UID 0, which is your host user) |
+
+**Maintainer diagnostics:** to inspect an image as root without the
+entrypoint, use the runtime directly, for example
+`docker run -it --rm --entrypoint bash -u 0 <image>`. Anyone with access to
+the container runtime already has this power; it is deliberately not offered
+by the everyday launcher or Makefile targets.
 
 ### Container CLI Auto-Detection
 
@@ -222,7 +327,10 @@ the host platform:
 |------|-----|---------|
 | macOS | docker | Docker Desktop |
 | Linux | nerdctl | Rootless containerd |
-| Windows | docker | Docker Desktop |
+| Windows 11 (WSL2 shell) | docker | Docker Desktop |
+
+From native Windows (PowerShell or CMD), the launcher stops and asks you to
+use a WSL2 shell.
 
 Override with `CONTAINER_CLI=docker` or the `--cli` flag.
 
@@ -234,12 +342,14 @@ with predictable names.
 
 ## Deployment Environments
 
-| Runtime | Container UID 0 is... | Bind mount access via... | Security boundary |
-|---------|----------------------|--------------------------|-------------------|
-| Docker rootful | Real root (dangerous) | gosu drop to HOST_UID | Container isolation |
-| nerdctl rootless | Host user (safe) | Stay UID 0 (= host user) | User namespace |
-| Podman rootless | Host user (safe) | --userns=keep-id | User namespace |
-| Kubernetes | Blocked by policy | fsGroup in pod spec | Pod security standards |
+| Runtime | Container UID 0 is... | The session runs as... | Security boundary |
+|---------|----------------------|------------------------|-------------------|
+| Docker rootful, Docker Desktop | Real root | `HOST_USER` (dropped via gosu) | Container isolation |
+| nerdctl rootless | The host user | Container UID 0 (= the host user) | User namespace |
+| Podman rootless (`--userns=keep-id --user 0:0`) | A subordinate UID | `HOST_USER` (dropped via gosu) | User namespace |
+| Kubernetes (not tested) | Depends on pod policy | `HOST_USER`, if the pod starts as root | Pod security standards |
+
+In every case `HOST_USER`, `HOST_UID`, and `HOST_GID` are required.
 
 ## Linux Host Prerequisites
 
@@ -339,7 +449,7 @@ Run `make -f <lang>/Makefile help` for the full list.  Common targets:
 ```bash
 make -f ada/Makefile build          # Build the image
 make -f ada/Makefile run            # Launch container (auto-detects CLI)
-make -f ada/Makefile test           # Acceptance tests (A1-A8)
+make -f ada/Makefile test           # Acceptance tests (A1-A9, I1-I4)
 make -f ada/Makefile test-offline   # Offline build test (A10)
 make -f ada/Makefile doctor         # Print every tool version
 make -f ada/Makefile inspect        # Show configured variables
