@@ -115,7 +115,7 @@ fi
 
 if [ "$CLI" = podman ]; then
     mnt="$(mktemp -d)"
-    out="$(podman run --rm --userns=keep-id --user 0:0 \
+    out="$(podman run --rm --pull=never --userns=keep-id --user 0:0 \
             -e HOST_USER="$(id -un)" -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
             -v "$mnt":/workspace:Z "$IMAGE" \
             bash -c 'echo "$(id -un) $(id -u) $(id -g)"; touch /workspace/owned' 2>&1)"
@@ -127,7 +127,7 @@ if [ "$CLI" = podman ]; then
     fi
     rm -rf "$mnt"
     run_expect "podman: missing variables are rejected" $EX_USAGE "is not set" \
-        --userns=keep-id --user 0:0 "$IMAGE" true
+        --pull=never --userns=keep-id --user 0:0 "$IMAGE" true
 fi
 
 echo ""
