@@ -113,10 +113,6 @@ endif
 run:
 	@$(CONTAINER_RUN) --image $(IMAGE_NAME) --source "$(CURDIR)"
 
-.PHONY: run-root
-run-root:
-	@$(CONTAINER_RUN) --image $(IMAGE_NAME) --source "$(CURDIR)" --root
-
 .PHONY: run-shell
 run-shell:
 	@$(CONTAINER_RUN) --image $(IMAGE_NAME) --source "$(CURDIR)" --workdir /home/$(HOST_USER)
@@ -125,10 +121,6 @@ ifdef SYSTEM_IMAGE_NAME
 .PHONY: run-system
 run-system:
 	@$(CONTAINER_RUN) --image $(SYSTEM_IMAGE_NAME) --source "$(CURDIR)"
-
-.PHONY: run-root-system
-run-root-system:
-	@$(CONTAINER_RUN) --image $(SYSTEM_IMAGE_NAME) --source "$(CURDIR)" --root
 
 .PHONY: run-shell-system
 run-shell-system:
@@ -163,7 +155,10 @@ test-docker:
 .PHONY: test-podman
 test-podman:
 	podman run --rm \
-		--userns=keep-id \
+		--userns=keep-id --user 0:0 \
+		-e HOST_UID=$(HOST_UID) \
+		-e HOST_GID=$(HOST_GID) \
+		-e HOST_USER=$(HOST_USER) \
 		-v "$(REPO_ROOT)$(LANG_DIR)":/workspace \
 		-w /workspace/$(EXAMPLE_DIR) \
 		$(IMAGE_NAME) \
@@ -195,7 +190,10 @@ test-docker-system:
 .PHONY: test-podman-system
 test-podman-system:
 	podman run --rm \
-		--userns=keep-id \
+		--userns=keep-id --user 0:0 \
+		-e HOST_UID=$(HOST_UID) \
+		-e HOST_GID=$(HOST_GID) \
+		-e HOST_USER=$(HOST_USER) \
 		-v "$(REPO_ROOT)$(LANG_DIR)":/workspace \
 		-w /workspace/$(EXAMPLE_DIR) \
 		$(SYSTEM_IMAGE_NAME) \
@@ -240,9 +238,10 @@ endif
 # ----------------------------------------------------------------------------
 # Podman convenience aliases
 # ----------------------------------------------------------------------------
-# Podman rootless uses --userns=keep-id to map the host UID/GID directly
-# into the container, so HOST_* env vars and entrypoint adaptation are not
-# needed.  The entrypoint detects a non-root UID and execs the CMD directly.
+# Podman rootless uses --userns=keep-id so the host UID maps to the same UID
+# in the container, and --user 0:0 so the entrypoint starts as container root
+# (a subordinate UID, not host root), creates the account from the required
+# HOST_* variables, and then drops to it.
 # ----------------------------------------------------------------------------
 .PHONY: podman-pull
 podman-pull: CONTAINER_CLI=podman

@@ -58,13 +58,13 @@
 #
 # Notes
 # -----
-# - User identity is adapted at runtime by entrypoint.sh, not baked in at
-#   build time. The build-time user (dev:1000:1000) is a fallback for CI
-#   and Kubernetes environments where no HOST_* variables are passed.
+# - The image contains no human account. At startup, entrypoint.sh creates
+#   exactly one from the required HOST_USER, HOST_UID, and HOST_GID; there
+#   is no fallback account.
 # - In rootless runtimes, container UID 0 maps to the host user via the
 #   user namespace. The entrypoint detects this and stays as UID 0 rather
 #   than dropping privileges, which would break bind-mount access.
-# - In rootful runtimes, the entrypoint drops to the adapted user via gosu.
+# - In rootful runtimes, the entrypoint drops to the runtime account via gosu.
 # - Go cross-compilation is built-in: set GOOS and GOARCH to build for any
 #   supported target without additional cross-compilers.
 # - Bazelisk is installed as /usr/local/bin/bazel and automatically
@@ -102,18 +102,14 @@ ARG STATICCHECK_VERSION=2026.1
 ARG TYPST_SHA256_AMD64=a6044cbad2a954deb921167e257e120ac0a16b20339ec01121194ff9d394996d
 ARG TYPST_SHA256_ARM64=491b101aa40a3a7ea82a3f8a6232cabb4e6a7e233810082e5ac812d43fdcd47a
 ARG TYPST_VERSION=0.14.2
-ARG USER_GID=1000
-ARG USERNAME=dev
-ARG USER_UID=1000
 
 # ----------------------------------------------------------------------------
 # Environment variables (alphabetized)
 # ----------------------------------------------------------------------------
-ENV HOME=/home/${USERNAME}
 ENV LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8 \
-    PATH=/usr/local/go/bin:${HOME}/.local/bin:/usr/local/bin:${PATH} \
+    PATH=/usr/local/go/bin:/usr/local/bin:${PATH} \
     SHELL=/usr/bin/zsh \
     TERM=xterm-256color \
     TZ=UTC
@@ -238,25 +234,19 @@ RUN ARCH=$(dpkg --print-architecture) \
  && rm -rf /tmp/golangci-lint*
 
 # ----------------------------------------------------------------------------
-# Create developer user
+# No built-in human account
+# ----------------------------------------------------------------------------
+# The Ubuntu base image ships an "ubuntu" account and group (ID 1000). Both
+# are removed: the image contains no human account. At startup,
+# entrypoint.sh creates exactly one account from the required HOST_USER,
+# HOST_UID, and HOST_GID.
 # ----------------------------------------------------------------------------
 RUN set -eux; \
-    if ! getent group "${USER_GID}" >/dev/null; then \
-        groupadd --gid "${USER_GID}" "${USERNAME}"; \
-    fi; \
-    if id -u "${USERNAME}" >/dev/null 2>&1; then \
-        usermod --uid "${USER_UID}" --gid "${USER_GID}" --shell /usr/bin/zsh "${USERNAME}"; \
-    elif getent passwd "${USER_UID}" >/dev/null; then \
-        EXISTING_USER="$(getent passwd "${USER_UID}" | cut -d: -f1)"; \
-        rm -rf "/home/${USERNAME}"; \
-        usermod --login "${USERNAME}" --home "/home/${USERNAME}" --move-home \
-            --gid "${USER_GID}" --shell /usr/bin/zsh "${EXISTING_USER}"; \
-    else \
-        useradd --uid "${USER_UID}" --gid "${USER_GID}" -m -s /usr/bin/zsh "${USERNAME}"; \
-    fi; \
-    usermod -aG sudo "${USERNAME}"; \
-    echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/${USERNAME}"; \
-    chmod 0440 "/etc/sudoers.d/${USERNAME}"
+    if getent passwd ubuntu >/dev/null; then userdel --remove ubuntu 2>/dev/null || userdel ubuntu; fi; \
+    if getent group ubuntu >/dev/null; then groupdel ubuntu; fi; \
+    rm -rf /home/ubuntu; \
+    install -d -m 0755 /etc/dev-containers; \
+    echo /usr/bin/pip3 > /etc/dev-containers/sudo-commands
 
 # ----------------------------------------------------------------------------
 # License
@@ -264,17 +254,10 @@ RUN set -eux; \
 COPY LICENSE /usr/share/doc/dev-containers/LICENSE
 
 # ----------------------------------------------------------------------------
-# Switch to developer user
+# Shell template for the runtime account (/etc/skel)
 # ----------------------------------------------------------------------------
-USER ${USERNAME}
-WORKDIR ${HOME}
-
-RUN mkdir -p \
-    "${HOME}/.docker/completions" \
-    "${HOME}/.local/bin" \
-    "${HOME}/workspace"
-
-COPY --chown=${USER_UID}:${USER_GID} go/.zshrc ${HOME}/.zshrc
+RUN mkdir -p /etc/skel/.docker/completions /etc/skel/.local/bin
+COPY go/.zshrc /etc/skel/.zshrc
 
 # ----------------------------------------------------------------------------
 # Verify toolchain installation

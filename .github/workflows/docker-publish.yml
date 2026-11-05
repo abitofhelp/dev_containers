@@ -106,7 +106,7 @@ jobs:
             GPRBUILD_VERSION=${{ env.GPRBUILD_VERSION }}
           outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
 
-      - name: Acceptance tests A1-A8 on the pushed image
+      - name: Acceptance tests (A1-A9, I1-I4) on the pushed image
         env:
           CANDIDATE: ${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
         run: |
@@ -116,6 +116,9 @@ jobs:
             -e EXPECT_GNAT="$GNAT_VERSION" -e EXPECT_GNATPROVE="$GNATPROVE_VERSION" \
             -v "${{ github.workspace }}/ada":/workspace -w /workspace \
             "$CANDIDATE" bash tests/acceptance.sh
+
+      - name: Runtime identity tests on the pushed image
+        run: bash tests/identity.sh "${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}" docker
 
       - name: Acceptance test A10 on the pushed image
         run: >-
