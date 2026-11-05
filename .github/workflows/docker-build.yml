@@ -54,18 +54,32 @@ jobs:
         run: docker build -f ada/Dockerfile -t dev-container-ada:ci .
 
       - name: Tool versions (dev-doctor)
-        run: docker run --rm dev-container-ada:ci dev-doctor
+        run: |
+          docker run --rm \
+            -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" -e HOST_USER="$(whoami)" \
+            dev-container-ada:ci dev-doctor
 
-      - name: Acceptance tests A1-A8
+      - name: Acceptance tests (A1-A9, I1-I4)
         run: |
           docker run --rm \
             -e HOST_UID="$(id -u)" \
             -e HOST_GID="$(id -g)" \
             -e HOST_USER="$(whoami)" \
+            -e RUN_ALT_COMPILER=1 \
             -v "${{ github.workspace }}/ada":/workspace \
             -w /workspace \
             dev-container-ada:ci \
             bash tests/acceptance.sh
+
+      - name: Runtime identity tests (Docker)
+        run: bash tests/identity.sh dev-container-ada:ci docker
+
+      - name: Runtime identity tests (Podman keep-id)
+        run: |
+          loaded="$(docker save dev-container-ada:ci | podman load | sed -n 's/^Loaded image: //p' | head -1)"
+          test -n "$loaded"
+          echo "Podman image: $loaded"
+          bash tests/identity.sh "$loaded" podman
 
       - name: Acceptance test A10 (offline build from prefetched dependencies)
         run: make -f ada/Makefile test-offline CONTAINER_CLI=docker IMAGE_NAME=dev-container-ada:ci
@@ -76,7 +90,9 @@ jobs:
           docker run --rm --entrypoint cat dev-container-ada:ci \
             /usr/share/doc/dev-containers/packages-${{ matrix.arch }}.txt \
             > artifacts/packages-${{ matrix.arch }}.txt
-          docker run --rm dev-container-ada:ci dev-doctor > artifacts/dev-doctor-${{ matrix.arch }}.txt
+          docker run --rm \
+            -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" -e HOST_USER="$(whoami)" \
+            dev-container-ada:ci dev-doctor > artifacts/dev-doctor-${{ matrix.arch }}.txt
 
       - name: Upload the package list and versions
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -250,10 +266,21 @@ jobs:
       - name: Smoke test (${{ matrix.name }})
         run: |
           docker run --rm \
-            -e HOST_UID=$(id -u) \
-            -e HOST_GID=$(id -g) \
-            -e HOST_USER=$(whoami) \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
+            -e HOST_USER="$(whoami)" \
             -v "${{ github.workspace }}/${{ matrix.lang_dir }}":/workspace \
             -w /workspace/${{ matrix.workdir }} \
             ${{ matrix.image_name }}:ci \
             bash -c '${{ matrix.smoke_test }}'
+
+      - name: Runtime identity tests (${{ matrix.name }})
+        run: bash tests/identity.sh ${{ matrix.image_name }}:ci docker
+
+      - name: vcpkg manifest install as the session user (cpp)
+        if: matrix.name == 'cpp'
+        run: |
+          docker run --rm \
+            -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" -e HOST_USER="$(whoami)" \
+            -v "${{ github.workspace }}/cpp":/workspace -w /workspace \
+            ${{ matrix.image_name }}:ci bash tests/vcpkg_manifest.sh

@@ -25,6 +25,10 @@ export TMPDIR=/tmp
 [[ -o interactive ]] || return
 [[ "$TERM" = "dumb" ]] && export TERM=xterm-256color
 
+# Per-user tools (for example `pip install --user`). The entrypoint adds this
+# for the main session; this covers shells opened with `exec`.
+[[ ":$PATH:" == *":$HOME/.local/bin:"* ]] || export PATH="$HOME/.local/bin:$PATH"
+
 unset PS1 RPS1 RPROMPT PROMPT_COMMAND 2>/dev/null
 
 # Container detection — trust entrypoint-exported markers first, then fall

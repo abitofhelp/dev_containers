@@ -12,6 +12,65 @@ go 1.1.0, rust 1.0.2) are retired.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-05
+
+Hardens how every image handles the runtime user (#6) and fixes non-root
+Alire builds in the Ada image (#5).
+
+### Breaking
+
+- All images: `HOST_USER`, `HOST_UID`, and `HOST_GID` are **required** at
+  launch. If any is missing or invalid, or conflicts with an existing
+  account, the container refuses to start (exit status 64) and prints how to
+  launch it. A bare `docker run <image>` no longer works.
+- All images: the build-time `dev` account (UID 1000, with passwordless
+  root `sudo`) and the silent fallback to it are removed. The images contain
+  no human account; the entrypoint creates exactly one from the declared
+  identity. Commands that used `docker exec -u dev` must use
+  `docker exec -u "$(id -u)"` instead.
+- `container_run.py` (hybrid_scripts_python) and the Makefiles no longer
+  offer a root shell (`--root`, `run-root`, `run-root-system`). Maintainers
+  use the container runtime directly.
+- `container_run.py` refuses to launch from native Windows; use a WSL2 shell.
+
+### Changed
+
+- All images: `sudo` is scoped to installing software (`apt-get`, `apt`,
+  and `pip`), without a password. Previously the real user had no `sudo`,
+  while the unused `dev` account had unrestricted root.
+- All images: per-user files come from `/etc/skel`; images can declare extra
+  groups (`/etc/dev-containers/user-groups`) and extra `sudo` commands
+  (`/etc/dev-containers/sudo-commands`) for the runtime account.
+- An existing account is reused only if its name, UID, and GID all match
+  (container restarts); any conflict stops the container.
+- Podman: the Makefiles and launcher run `--userns=keep-id --user 0:0` and
+  pass the identity variables, so the entrypoint creates the account and
+  drops to the host UID.
+- C++ image: `/opt/vcpkg` is root-owned and read-only except for its lock
+  file and scratch directories (group `vcpkg`); projects use manifest mode.
+
+### Fixed
+
+- Ada image: `alr build` failed for every non-root user on crates whose
+  solution includes `gnat_native` (for example, `gnat = ">=13"`), because
+  Alire could not write its post-fetch flag into the read-only toolchain
+  (#5). The image build now lets Alire write those flags before the
+  toolchain is made read-only.
+- C++ image: vcpkg was writable only by UID 1000.
+
+### Added
+
+- README: "Platform Support" (tested and expected hosts, Linux binaries
+  only, Windows 11 through WSL2, Kubernetes as an untested note), "Runtime
+  Identity", and "Extending the Images" (derived images and vendor
+  licensing).
+- Tests: `tests/identity.sh` checks the launch contract for any image
+  (missing and malformed variables, macOS- and Linux-style identities,
+  restarts, conflicts, bind-mount ownership, and Podman `keep-id`) and runs
+  in CI. The Ada acceptance tests add I1–I4 (identity and scoped `sudo`) and
+  A9 (non-root builds with a `gnat` dependency, and optionally with GNAT 15).
+  The C++ image adds a non-root vcpkg manifest-mode test.
+
 ## [1.2.0] - 2026-11-04
 
 Modernizes the Ada image and makes it the single Ada image for amd64 and
