@@ -18,8 +18,15 @@ Teensy 4.1 bare-metal Rust support.
 
 ¹ The Ada image includes the ARM GCC cross-compilers (`arm-none-eabi`,
 `arm-linux-gnueabihf`), OpenOCD, ST-Link tools, and `gdb-multiarch`. An
-Ada cross-compiler (for example, Alire's `gnat_arm_elf`) is not
-preinstalled.
+Ada cross-compiler is not preinstalled, because only embedded projects need
+it: a project that depends on Alire's `gnat_arm_elf` fetches it on first use
+(about 2.2 GB unpacked; it includes ready-made runtimes for STM32 and other
+boards).
+
+**Coming in the next release:** a comprehensive guide to embedded
+development across Ada, C/C++, and Rust (STM32 and other boards: the tools in
+each image, flashing and debugging, USB access, and adding vendor tools
+through a derived image).
 
 `dev-container-ada-system` is **deprecated** (see
 [Deprecated Images](#deprecated-images)).
