@@ -52,7 +52,7 @@ help:
 	@echo "Podman convenience aliases:"
 	@echo "  podman-pull          Pull the image with podman"
 	@echo "  podman-build         Build the image with podman"
-	@echo "  podman-run           Run with podman (--userns=keep-id)"
+	@echo "  podman-run           Run with podman (--userns=keep-id --user 0:0)"
 	@echo ""
 	@echo "General:"
 	@echo "  inspect              Show configured image and runtime settings"

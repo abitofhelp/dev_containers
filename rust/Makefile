@@ -56,7 +56,7 @@ help:
 	@echo "Podman convenience aliases:"
 	@echo "  podman-pull          Pull the image with podman"
 	@echo "  podman-build         Build the image with podman"
-	@echo "  podman-run           Run with podman (--userns=keep-id)"
+	@echo "  podman-run           Run with podman (--userns=keep-id --user 0:0)"
 	@echo ""
 	@echo "General:"
 	@echo "  inspect              Show configured image and runtime settings"
@@ -186,7 +186,10 @@ test-teensy41-docker:
 .PHONY: test-teensy41-podman
 test-teensy41-podman:
 	podman run --rm \
-		--userns=keep-id \
+		--userns=keep-id --user 0:0 \
+		-e HOST_UID=$(HOST_UID) \
+		-e HOST_GID=$(HOST_GID) \
+		-e HOST_USER=$(HOST_USER) \
 		-v "$(REPO_ROOT)$(LANG_DIR)":/workspace \
 		-w /workspace/$(TEENSY41_EXAMPLE_DIR) \
 		$(IMAGE_NAME) \
