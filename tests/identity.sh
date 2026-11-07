@@ -16,6 +16,7 @@
 #   - a macOS-style identity (UID 501, GID 20) and a Linux-style identity
 #     (UID 1001, GID 1001) each produce exactly that account;
 #   - restarting the same container reuses the account;
+#   - `docker exec -u <uid>` gets the account's HOME (issue #2);
 #   - an identity that conflicts with an existing account is rejected;
 #   - (docker) files written to a bind mount are owned by HOST_UID:HOST_GID;
 #   - (podman) --userns=keep-id with --user 0:0 initializes the account and
@@ -98,6 +99,26 @@ if [ "$CLI" = docker ]; then
         pass "restarting the same container reuses the account"
     else
         fail "restarting the same container reuses the account" "${out1:-} / ${out2:-}"
+    fi
+    "$CLI" rm -f "$cname" >/dev/null 2>&1
+
+    # --- docker exec into a running container (#2) --------------------------
+    # The images set no HOME, so `docker exec -u <uid>` takes HOME from the
+    # account's passwd entry, and login shells can write XDG state there.
+    cname="identity-exec-$$"
+    out=""
+    if "$CLI" run -d --name "$cname" "${ID_LINUX[@]}" "$IMAGE" sleep 120 >/dev/null 2>&1; then
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+            "$CLI" exec "$cname" getent passwd tester >/dev/null 2>&1 && break
+            sleep 1
+        done
+        out="$("$CLI" exec -u 1001 "$cname" bash -lc \
+            'echo "$HOME"; mkdir -p "$HOME/.local/state/check" && echo writable' 2>&1)"
+    fi
+    if [ "$out" = "$(printf '/home/tester\nwritable')" ]; then
+        pass "docker exec -u <uid> gets the account's HOME and can write XDG state"
+    else
+        fail "docker exec -u <uid> gets the account's HOME and can write XDG state" "$out"
     fi
     "$CLI" rm -f "$cname" >/dev/null 2>&1
 
