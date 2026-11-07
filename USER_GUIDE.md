@@ -69,8 +69,8 @@ the embedded tools listed in section 6.
 
 **Deprecated:** `dev-container-ada-system` (Ubuntu 24.04, `gnat-13`) was the
 arm64 workaround from before Alire shipped an arm64 GNAT. No new versions
-are published; its existing GHCR tags remain available. Use
-`dev-container-ada` instead.
+are published, and its Dockerfile was removed in v2.0.0; its existing GHCR
+tags remain available. Use `dev-container-ada` instead.
 
 ### 0.2 C++
 

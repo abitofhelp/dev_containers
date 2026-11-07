@@ -33,6 +33,12 @@ Alire builds in the Ada image (#5).
   use the container runtime directly.
 - `container_run.py` refuses to launch from native Windows; use a WSL2 shell.
 
+### Removed
+
+- `ada/Dockerfile.system` and the Ada `*-system` Makefile targets
+  (`dev-container-ada-system` has been deprecated since v1.2.0). Its existing
+  GHCR tags remain available.
+
 ### Changed
 
 - All images: `sudo` is scoped to installing software (`apt-get`, `apt`,
@@ -46,6 +52,7 @@ Alire builds in the Ada image (#5).
 - Podman: the Makefiles and launcher run `--userns=keep-id --user 0:0` and
   pass the identity variables, so the entrypoint creates the account and
   drops to the host UID.
+- Ada `doctor` and Rust `test-teensy41-podman` pass the identity variables.
 - C++ image: `/opt/vcpkg` is root-owned and read-only except for its lock
   file and scratch directories (group `vcpkg`); projects use manifest mode.
 

@@ -84,7 +84,6 @@ rustt    # Rust image
 | Command | Image | amd64 (x86_64) | arm64 |
 |---------|-------|:---:|:---:|
 | `adat` | dev-container-ada (Alire) | yes | yes |
-| `adast` | dev-container-ada-system (**deprecated**; use `adat`) | yes | yes |
 | `cppt` | dev-container-cpp | yes | yes |
 | `cppst` | dev-container-cpp-system (APT) | yes | yes |
 | `got` | dev-container-go | yes | yes |
@@ -237,13 +236,12 @@ pinned, with SHA256 verification where applicable.
 
 | Image | Status | Use instead | Why |
 |-------|--------|-------------|-----|
-| `dev-container-ada-system` | Deprecated in v1.2.0. No new versions are published. | `dev-container-ada` | It was a workaround: Alire had no arm64 Linux GNAT, so Apple Silicon users needed Ubuntu's `gnat-13`. Alire now ships GNAT for arm64, and `dev-container-ada` supports amd64 and arm64. |
+| `dev-container-ada-system` | Deprecated in v1.2.0; its Dockerfile was removed in v2.0.0. No new versions are published. | `dev-container-ada` | It was a workaround: Alire had no arm64 Linux GNAT, so Apple Silicon users needed Ubuntu's `gnat-13`. Alire now ships GNAT for arm64, and `dev-container-ada` supports amd64 and arm64. |
 
 Existing `dev-container-ada-system` tags (including `v1.1.0` and
 `system-gnat-13`) remain on GHCR for anyone who needs the old environment.
-`ada/Dockerfile.system` and the `*-system` Makefile targets stay in the
-repository, unchanged, until consumers have moved; they will be removed in a
-later release.
+`ada/Dockerfile.system` and the Ada `*-system` Makefile targets were removed
+in v2.0.0.
 
 ## Extending the Images
 
